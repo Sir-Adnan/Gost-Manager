@@ -1,29 +1,23 @@
 #!/bin/bash
 
 # ==================================================
-# Gost Manager - ADAPTIVE EDITION (v7.0)
+# Gost Manager - ADAPTIVE EDITION (v7.1)
 # Creator: UnknownZero
-# Focus: High Contrast, Light/Dark Theme Safe
+# Focus: High Contrast, Light/Dark Theme Safe, Auto-Shortcut
 # ==================================================
 
 # --- Colors (Safe Palette) ---
-# NC (No Color) allows the terminal to choose Black or White based on theme
 NC='\033[0m'
 BOLD='\033[1m'
-
-# ANSI Colors (Adaptive) - These shift slightly based on terminal theme
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
-
-# High Intensity Colors (For Accents)
 HI_CYAN='\033[0;96m'
 HI_PINK='\033[0;95m'
 HI_GREEN='\033[0;92m'
-HI_YELLOW='\033[0;93m'
 
 # --- Icons ---
 ICON_ROCKET="🚀"
@@ -36,6 +30,7 @@ ICON_EXIT="🚪"
 ICON_CPU="🧠"
 ICON_RAM="💾"
 ICON_NET="🌐"
+ICON_INSTALL="💿"
 
 # --- Paths ---
 CONFIG_DIR="/etc/gost"
@@ -43,6 +38,8 @@ CONFIG_FILE="/etc/gost/config.yaml"
 SERVICE_FILE="/etc/systemd/system/gost.service"
 CERT_DIR="/etc/gost/certs"
 YQ_BIN="/usr/bin/yq"
+SHORTCUT_BIN="/usr/local/bin/gost"
+REPO_URL="https://raw.githubusercontent.com/Sir-Adnan/Gost-Manager/main/gost.sh"
 
 # --- Root Check ---
 if [[ $EUID -ne 0 ]]; then
@@ -51,11 +48,10 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # ==================================================
-#  VISUAL ENGINE (Adaptive)
+#  VISUAL ENGINE
 # ==================================================
 
 draw_logo() {
-    # Using Cyan for logo as it reads well on both black and white backgrounds
     echo -e "${HI_CYAN}"
     echo "   ______  ____  _______ ______   "
     echo "  / ____/ / __ \/ ___/ //_  __/   "
@@ -63,35 +59,25 @@ draw_logo() {
     echo "/ /_/ / / /_/ /___/ / / / /       "
     echo "\____/  \____//____/ /_/ /_/      "
     echo "                                  "
-    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 7 . 0${NC}"
+    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 7 . 1${NC}"
     echo -e "         ${HI_PINK}By UnknownZero${NC}"
     echo ""
 }
 
 draw_line() {
-    # Using Blue instead of Grey for better visibility on light themes
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-# Usage: print_option "ID" "Icon" "Title" "Description"
 print_option() {
     local id="$1"
     local icon="$2"
     local title="$3"
     local desc="$4"
-    
     local total_width=45
     local title_len=${#title}
     local dots_count=$((total_width - title_len))
     local dots=""
-    
     for ((i=0; i<dots_count; i++)); do dots="${dots}."; done
-    
-    # Structure: 
-    # ID: Cyan (Readable on both)
-    # Title: BOLD (Adapts to Black/White)
-    # Dots: Blue (Subtle but visible)
-    # Desc: Yellow (Darker yellow on light themes usually)
     echo -e "  ${HI_CYAN}[${id}]${NC} ${icon} ${BOLD}${title}${NC} ${BLUE}${dots}${NC} ${YELLOW}${desc}${NC}"
 }
 
@@ -100,7 +86,6 @@ draw_dashboard() {
     draw_logo
     draw_line
     
-    # System Stats
     SERVER_IP=$(hostname -I | awk '{print $1}')
     RAM_USAGE=$(free -h | awk '/Mem:/ {print $3 "/" $2}')
     LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | tr -d ' ')
@@ -118,7 +103,6 @@ draw_dashboard() {
         STATUS="${RED}OFFLINE${NC}"
     fi
 
-    # Dashboard Grid - Using BOLD for values to ensure contrast
     echo -e "  ${ICON_NET} IP: ${BOLD}${SERVER_IP}${NC}"
     echo -e "  ${ICON_RAM} RAM: ${BOLD}${RAM_USAGE}${NC}   ${ICON_CPU} Load: ${BOLD}${LOAD}${NC}"
     echo -e "  ${ICON_GEAR} Status: ${STATUS}   ${ICON_ROCKET} Tunnels: ${HI_GREEN}${TUNNELS}${NC}"
@@ -126,7 +110,6 @@ draw_dashboard() {
     draw_line
     echo ""
     
-    # Menu Options
     print_option "1" "$ICON_ROCKET" "Direct Tunnel" "Simple Relay"
     print_option "2" "$ICON_LOCK" "Secure Tunnel" "TLS / WSS / gRPC"
     print_option "3" "$ICON_LB" "Load Balancer" "Multi-node Dist"
@@ -171,6 +154,26 @@ install_dependencies() {
     mkdir -p "$CONFIG_DIR" "$CERT_DIR"
     chmod 700 "$CERT_DIR"
     if [ ! -s "$CONFIG_FILE" ]; then echo "services: []" > "$CONFIG_FILE"; fi
+}
+
+# --- NEW: Shortcut Setup Function ---
+setup_shortcut() {
+    if [ ! -f "$SHORTCUT_BIN" ]; then
+        echo ""
+        draw_line
+        echo -e "  ${ICON_INSTALL}  ${BOLD}Install Shortcut?${NC}"
+        echo -e "  ${BLUE}You can type 'gost' to run this script later.${NC}"
+        echo ""
+        echo -ne "  ${HI_PINK}➤ Install (y/n)? : ${NC}"
+        read install_opt
+        if [[ "$install_opt" == "y" || "$install_opt" == "Y" ]]; then
+            echo -e "  ${YELLOW}Downloading latest version...${NC}"
+            curl -o "$SHORTCUT_BIN" -fsSL "$REPO_URL"
+            chmod +x "$SHORTCUT_BIN"
+            echo -e "  ${HI_GREEN}✔ Shortcut installed! Type 'gost' to run.${NC}"
+            sleep 2
+        fi
+    fi
 }
 
 normalize_ip() {
@@ -224,7 +227,7 @@ create_service() {
     GOST_BIN=$(command -v gost)
     cat <<EOF > "$SERVICE_FILE"
 [Unit]
-Description=Gost V7 Service
+Description=Gost Service
 After=network.target
 
 [Service]
@@ -258,19 +261,15 @@ add_tunnel() {
     section_title "ADD DIRECT TUNNEL"
     info_msg "Relays traffic directly from Client to Destination."
     echo ""
-    
     ask_input "Service Name"; read s_name
     check_name_safety "$s_name" || { sleep 2; return; }
-    
     ask_input "Local Port"; read lport
     validate_port "$lport" || { echo "Bad Port"; sleep 2; return; }
     check_port_safety "$lport" || { sleep 2; return; }
-    
     echo ""
     ask_input "Dest IP"; read raw_ip
     dip=$(normalize_ip "$raw_ip")
     ask_input "Dest Port"; read dport
-    
     echo ""
     echo -e "  ${BOLD}Protocol Selection:${NC}"
     echo -e "  ${HI_CYAN}[1]${NC} TCP Only"
@@ -278,7 +277,6 @@ add_tunnel() {
     echo -e "  ${HI_CYAN}[3]${NC} Dual Stack ${HI_GREEN}(Recommended)${NC}"
     echo ""
     ask_input "Select"; read proto
-    
     backup_config
     if [[ "$proto" == "1" || "$proto" == "3" ]]; then
         $YQ_BIN -i ".services += [{\"name\": \"$s_name-tcp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"listener\": {\"type\": \"tcp\"}, \"forwarder\": {\"nodes\": [{\"addr\": \"$dip:$dport\"}]}}]" "$CONFIG_FILE"
@@ -294,13 +292,10 @@ add_lb() {
     section_title "ADD LOAD BALANCER"
     info_msg "Distribute traffic between multiple servers."
     echo ""
-    
     ask_input "Service Name"; read s_name
     check_name_safety "$s_name" || { sleep 2; return; }
-    
     ask_input "Local Port"; read lport
     check_port_safety "$lport" || { sleep 2; return; }
-    
     echo -e "\n  ${BOLD}Strategy:${NC}"
     echo -e "  ${HI_CYAN}[1]${NC} Round Robin   ${BLUE}Rotate IPs${NC}"
     echo -e "  ${HI_CYAN}[2]${NC} Random        ${BLUE}Random pick${NC}"
@@ -309,33 +304,27 @@ add_lb() {
     echo ""
     ask_input "Select"; read s_opt
     case $s_opt in 2) strat="random";; 3) strat="least";; 4) strat="hashing";; *) strat="round";; esac
-    
     echo -e "\n  ${BOLD}Protocol:${NC}"
     echo -e "  ${HI_CYAN}[1]${NC} TCP Only"
     echo -e "  ${HI_CYAN}[2]${NC} UDP Only"
     echo -e "  ${HI_CYAN}[3]${NC} Dual Stack"
     echo ""
     ask_input "Select"; read proto
-
     declare -a NODES
     section_title "Manage Nodes"
     info_msg "Leave IP empty and press ENTER to finish."
-    
     while true; do
         echo ""
         ask_input "Node IP"; read raw_nip
         [[ -z "$raw_nip" ]] && break
         nip=$(normalize_ip "$raw_nip")
-        
         ask_input "Node Port"; read nport
         NODES+=("{\"addr\": \"$nip:$nport\"}")
         echo -e "    ${HI_GREEN}✔ Added${NC}"
     done
-    
     if [ ${#NODES[@]} -eq 0 ]; then echo "No nodes!"; sleep 2; return; fi
     NODES_STR=$(IFS=, ; echo "${NODES[*]}")
     backup_config
-    
     if [[ "$proto" == "1" || "$proto" == "3" ]]; then
         $YQ_BIN -i ".services += [{\"name\": \"$s_name-tcp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"listener\": {\"type\": \"tcp\"}, \"forwarder\": {\"selector\": {\"strategy\": \"$strat\", \"maxFails\": 3, \"failTimeout\": \"30s\"}, \"nodes\": [$NODES_STR]}}]" "$CONFIG_FILE"
     fi
@@ -350,29 +339,22 @@ add_secure() {
     section_title "SECURE ENCRYPTED TUNNEL"
     info_msg "Hide traffic using TLS, WSS, or gRPC."
     echo ""
-    
     echo -e "  ${HI_CYAN}[1]${NC} Sender / Client   ${BLUE}(Iran Server)${NC}"
     echo -e "  ${HI_CYAN}[2]${NC} Receiver / Server ${BLUE}(Foreign Server)${NC}"
     echo ""
     ask_input "Select Role"; read side
-    
     if [[ "$side" == "1" ]]; then
-        # Client
         section_title "SENDER CONFIGURATION"
         ask_input "Service Name"; read s_name
         check_name_safety "$s_name" || { sleep 2; return; }
-        
         ask_input "Local Port"; read lport
         check_port_safety "$lport" || { sleep 2; return; }
-        
         echo ""
         ask_input "Remote IP"; read raw_rip
         rip=$(normalize_ip "$raw_rip")
         ask_input "Remote Port"; read rport
-        
         ask_input "SNI Domain"; read sni
         [[ -z "$sni" ]] && sni="google.com"
-        
         echo -e "\n  ${BOLD}Encryption Type:${NC}"
         echo -e "  ${HI_CYAN}[1]${NC} WSS   ${BLUE}(Websocket Secure)${NC}"
         echo -e "  ${HI_CYAN}[2]${NC} gRPC  ${BLUE}(Google RPC)${NC}"
@@ -380,17 +362,14 @@ add_secure() {
         echo ""
         ask_input "Select"; read t_opt
         case $t_opt in 2) tr="grpc";; 3) tr="quic";; *) tr="wss";; esac
-        
         echo -e "\n  ${BOLD}Traffic Mode:${NC}"
         echo -e "  ${HI_CYAN}[1]${NC} TCP Only"
         echo -e "  ${HI_CYAN}[2]${NC} UDP Only"
         echo -e "  ${HI_CYAN}[3]${NC} Dual Stack ${HI_GREEN}(Best)${NC}"
         echo ""
         ask_input "Select"; read proto
-        
         backup_config
         FWD_JSON="{\"nodes\": [{\"addr\": \"$rip:$rport\", \"connector\": {\"type\": \"relay\"}, \"dialer\": {\"type\": \"$tr\", \"tls\": {\"secure\": false, \"serverName\": \"$sni\"}}}]}"
-        
         if [[ "$proto" == "1" || "$proto" == "3" ]]; then
             $YQ_BIN -i ".services += [{\"name\": \"$s_name-tcp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"forwarder\": $FWD_JSON}]" "$CONFIG_FILE"
         fi
@@ -398,16 +377,12 @@ add_secure() {
             $YQ_BIN -i ".services += [{\"name\": \"$s_name-udp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"udp\"}, \"forwarder\": $FWD_JSON}]" "$CONFIG_FILE"
         fi
         apply_config
-
     elif [[ "$side" == "2" ]]; then
-        # Server
         section_title "RECEIVER CONFIGURATION"
         ask_input "Service Name"; read s_name
         check_name_safety "$s_name" || { sleep 2; return; }
-        
         ask_input "Secure Port"; read lport
         check_port_safety "$lport" || { sleep 2; return; }
-        
         echo -e "\n  ${BOLD}Encryption Type:${NC}"
         echo -e "  ${HI_CYAN}[1]${NC} WSS"
         echo -e "  ${HI_CYAN}[2]${NC} gRPC"
@@ -415,24 +390,18 @@ add_secure() {
         echo ""
         ask_input "Select"; read t_opt
         case $t_opt in 2) tr="grpc";; 3) tr="quic";; *) tr="wss";; esac
-        
         echo ""
         ask_input "Forward IP"; read raw_tip
         tip=$(normalize_ip "$raw_tip")
         ask_input "Forward Port"; read tport
-        
         ask_input "Cert Domain"; read cert_cn
         [[ -z "$cert_cn" ]] && cert_cn="update.microsoft.com"
-
-        # Generate Certs
         local c_path="$CERT_DIR/cert_${lport}.pem"
         local k_path="$CERT_DIR/key_${lport}.pem"
         echo -e "  ${BLUE}Generating Certificates...${NC}"
         openssl req -newkey rsa:2048 -nodes -keyout "$k_path" -x509 -days 3650 -out "$c_path" -subj "/CN=$cert_cn" > /dev/null 2>&1
         chmod 600 "$k_path"
-        
         backup_config
-        
         s_name="$s_name" lport=":$lport" tr="$tr" taddr="$tip:$tport" cert="$c_path" key="$k_path" \
         $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": "relay"}, "listener": {"type": env(tr), "tls": {"certFile": env(cert), "keyFile": env(key)}}, "forwarder": {"nodes": [{"addr": env(taddr)}]}}]' "$CONFIG_FILE"
         apply_config
@@ -442,20 +411,15 @@ add_secure() {
 delete_service() {
     draw_dashboard
     section_title "DELETE SERVICE"
-    
     count=$($YQ_BIN '.services | length' "$CONFIG_FILE")
     if [[ "$count" == "0" ]]; then echo "No services configured."; sleep 2; return; fi
-    
-    # Table
     printf "  ${BLUE}%-4s %-25s %-15s${NC}\n" "ID" "NAME" "PORT"
     echo -e "  ${BLUE}────────────────────────────────────────────${NC}"
-    
     for ((i=0; i<$count; i++)); do
         s_name=$($YQ_BIN ".services[$i].name" "$CONFIG_FILE" | tr -d '"')
         s_port=$($YQ_BIN ".services[$i].addr" "$CONFIG_FILE" | tr -d '"')
         printf "  ${HI_CYAN}[%d]${NC}  ${BOLD}%-25s${NC} %-15s\n" "$i" "$s_name" "$s_port"
     done
-    
     echo ""
     ask_input "Enter ID (c to cancel)"; read del_id
     if [[ "$del_id" =~ ^[0-9]+$ ]] && [ "$del_id" -lt "$count" ]; then
@@ -469,7 +433,7 @@ menu_uninstall() {
     ask_input "Uninstall Everything? (y/n)"; read c
     if [[ "$c" == "y" ]]; then
         systemctl stop gost; systemctl disable gost
-        rm -rf "$CONFIG_DIR" "$SERVICE_FILE" "$YQ_BIN"
+        rm -rf "$CONFIG_DIR" "$SERVICE_FILE" "$YQ_BIN" "$SHORTCUT_BIN"
         systemctl daemon-reload
         rm -f "$(command -v gost)"
         echo -e "\n  ${HI_GREEN}✔ Uninstalled successfully.${NC}"; exit 0
@@ -482,6 +446,7 @@ menu_uninstall() {
 
 install_dependencies
 create_service
+setup_shortcut  # Check and Install Shortcut if needed
 
 while true; do
     draw_dashboard
