@@ -40,6 +40,12 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/Sir-Adnan/Gost-Manager/main/gost.sh)
 ```
 
+
+## 📥 نسخه بتا
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Sir-Adnan/Gost-Manager/main/gost-beta.sh)
+```
+
 ### ⚡ دسترسی سریع با `igost`
 
 پس از اولین اجرا، اسکریپت از شما می‌پرسد که آیا مایل به نصب میانبر هستید؟ با تایید آن، در دفعات بعدی فقط کافیست دستور زیر را بزنید:
