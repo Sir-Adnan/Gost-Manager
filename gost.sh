@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ==================================================
-# Gost Manager - CONFLICT FIX EDITION (v8.0)
+# Gost Manager - IGOST EDITION (v8.1)
 # Creator: UnknownZero
-# Focus: Fix Binary/Script Conflict, Adaptive UI
+# Focus: Fix Binary Conflict, Auto-Install Shortcut
 # ==================================================
 
 # --- Colors (Safe Palette) ---
@@ -38,8 +38,9 @@ CONFIG_FILE="/etc/gost/config.yaml"
 SERVICE_FILE="/etc/systemd/system/gost.service"
 CERT_DIR="/etc/gost/certs"
 YQ_BIN="/usr/bin/yq"
-# --- FIX: Changed shortcut name to avoid conflict with binary ---
-SHORTCUT_BIN="/usr/local/bin/gmenu"
+
+# --- FIX: Changed shortcut name to 'igost' ---
+SHORTCUT_BIN="/usr/local/bin/igost"
 REPO_URL="https://raw.githubusercontent.com/Sir-Adnan/Gost-Manager/main/gost.sh"
 
 # --- Root Check ---
@@ -60,7 +61,7 @@ draw_logo() {
     echo "/ /_/ / / /_/ /___/ / / / /       "
     echo "\____/  \____//____/ /_/ /_/      "
     echo "                                  "
-    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 8 . 0${NC}"
+    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 8 . 1${NC}"
     echo -e "         ${HI_PINK}By UnknownZero${NC}"
     echo ""
 }
@@ -157,22 +158,35 @@ install_dependencies() {
     if [ ! -s "$CONFIG_FILE" ]; then echo "services: []" > "$CONFIG_FILE"; fi
 }
 
-# --- FIX: Shortcut Setup Function ---
+# --- FIX: Robust Shortcut Installation ---
 setup_shortcut() {
-    if [ ! -f "$SHORTCUT_BIN" ]; then
+    # If igost doesn't exist OR if it's empty
+    if [ ! -s "$SHORTCUT_BIN" ]; then
         echo ""
         draw_line
-        echo -e "  ${ICON_INSTALL}  ${BOLD}Install Shortcut?${NC}"
-        echo -e "  ${BLUE}You can type 'gmenu' to run this script later.${NC}"
+        echo -e "  ${ICON_INSTALL}  ${BOLD}Setup 'igost' Shortcut?${NC}"
+        echo -e "  ${BLUE}Allows you to run the manager by typing 'igost'.${NC}"
         echo ""
-        echo -ne "  ${HI_PINK}➤ Install (y/n)? : ${NC}"
+        
+        # Default to Yes if user presses Enter
+        echo -ne "  ${HI_PINK}➤ Install (Y/n)? : ${NC}"
         read install_opt
-        if [[ "$install_opt" == "y" || "$install_opt" == "Y" ]]; then
-            # We copy the current running script to the shortcut location
-            cp "$0" "$SHORTCUT_BIN"
-            chmod +x "$SHORTCUT_BIN"
-            echo -e "  ${HI_GREEN}✔ Shortcut installed! Type 'gmenu' to run.${NC}"
-            sleep 2
+        install_opt=${install_opt:-y} # Default to y
+        
+        if [[ "$install_opt" =~ ^[Yy]$ ]]; then
+            echo -e "  ${YELLOW}Downloading script to $SHORTCUT_BIN...${NC}"
+            
+            # Download directly from repo to ensure we have the file
+            curl -L -o "$SHORTCUT_BIN" -fsSL "$REPO_URL"
+            
+            if [ -s "$SHORTCUT_BIN" ]; then
+                chmod +x "$SHORTCUT_BIN"
+                echo -e "  ${HI_GREEN}✔ Installed! Type 'igost' to run.${NC}"
+                sleep 2
+            else
+                echo -e "  ${RED}✖ Download failed. Check internet connection.${NC}"
+                sleep 2
+            fi
         fi
     fi
 }
@@ -447,7 +461,7 @@ menu_uninstall() {
 
 install_dependencies
 create_service
-setup_shortcut  # Checks and installs 'gmenu' shortcut
+setup_shortcut  # Ensure 'igost' is installed
 
 while true; do
     draw_dashboard
