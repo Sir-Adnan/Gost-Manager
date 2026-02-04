@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ==================================================
-# Gost Manager - IGOST EDITION (v8.2)
+# Gost Manager - STABLE EDITION (v9.1-MOD)
 # Creator: UnknownZero
-# Focus: Added CPU Watchdog (Auto-Restart)
+# Focus: FIX "Invalid Argument" Crash & AUTO-LOG-CLEAN
 # ==================================================
 
 # --- Colors (Safe Palette) ---
@@ -32,6 +32,8 @@ ICON_RAM="💾"
 ICON_NET="🌐"
 ICON_INSTALL="💿"
 ICON_RESTART="🔄"
+ICON_DNS="🛡️"
+ICON_PROXY="🔌"
 
 # --- Paths ---
 CONFIG_DIR="/etc/gost"
@@ -40,7 +42,7 @@ SERVICE_FILE="/etc/systemd/system/gost.service"
 CERT_DIR="/etc/gost/certs"
 YQ_BIN="/usr/bin/yq"
 
-# --- FIX: Changed shortcut name to 'igost' ---
+# --- Shortcut ---
 SHORTCUT_BIN="/usr/local/bin/igost"
 REPO_URL="https://raw.githubusercontent.com/Sir-Adnan/Gost-Manager/main/gost.sh"
 
@@ -62,7 +64,7 @@ draw_logo() {
     echo "/ /_/ / / /_/ /___/ / / / /       "
     echo "\____/  \____//____/ /_/ /_/      "
     echo "                                  "
-    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 8 . 2${NC}"
+    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 9 . 1${NC}"
     echo -e "         ${HI_PINK}By UnknownZero${NC}"
     echo ""
 }
@@ -82,6 +84,22 @@ print_option() {
     local dots=""
     for ((i=0; i<dots_count; i++)); do dots="${dots}."; done
     echo -e "  ${HI_CYAN}[${id}]${NC} ${icon} ${BOLD}${title}${NC} ${BLUE}${dots}${NC} ${YELLOW}${desc}${NC}"
+}
+
+show_guide() {
+    local title="$1"
+    local text="$2"
+    echo ""
+    echo -e "  ${HI_PINK}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}GUIDE:${NC} ${BOLD}$title${NC}"
+    echo -e "  ${HI_PINK}╠══════════════════════════════════════════════════════════╝${NC}"
+    echo -e "  ${HI_PINK}║${NC} $text"
+    echo -e "  ${HI_PINK}╚══════════════════════════════════════════════════════════${NC}"
+    echo ""
+}
+
+show_warning() {
+    echo -e "  ${RED}⚠ WARNING:${NC} ${YELLOW}Use only A-Z, 0-9. NO special chars ( \\\" ' $ \\ )!${NC}"
 }
 
 draw_dashboard() {
@@ -113,15 +131,17 @@ draw_dashboard() {
     draw_line
     echo ""
     
-    print_option "1" "$ICON_ROCKET" "Direct Tunnel" "Simple Relay"
-    print_option "2" "$ICON_LOCK" "Secure Tunnel" "TLS / WSS / gRPC"
+    print_option "1" "$ICON_ROCKET" "Direct Tunnel" "Simple / mTCP"
+    print_option "2" "$ICON_LOCK" "Secure Tunnel" "WSS/KCP/H2/SS"
     print_option "3" "$ICON_LB" "Load Balancer" "Multi-node Dist"
-    print_option "4" "$ICON_TRASH" "Delete Service" "Remove Active"
-    print_option "5" "$ICON_GEAR" "Edit Config" "Manual (Nano)"
-    print_option "6" "$ICON_LOGS" "View Logs" "Live Monitor"
-    print_option "7" "$ICON_EXIT" "Uninstall" "Remove All"
-    print_option "8" "$ICON_RESTART" "Auto-Restart" "Fix High CPU Usage"
-    print_option "0" "🔙" "Exit" "Close Script"
+    print_option "4" "$ICON_PROXY" "Simple Proxy" "SOCKS5 / HTTP"
+    print_option "5" "$ICON_DNS" "Secure DNS" "DoH / UDP"
+    print_option "6" "$ICON_TRASH" "Delete Service" "Remove Active"
+    print_option "7" "$ICON_GEAR" "Edit Config" "Manual (Nano)"
+    print_option "8" "$ICON_LOGS" "View Logs" "Live Monitor"
+    print_option "9" "$ICON_RESTART" "Auto-Restart" "Watchdog (CPU)"
+    print_option "10" "$ICON_TRASH" "Uninstall" "Remove All"
+    print_option "0" "$ICON_EXIT" "Exit" "Close Script"
     
     echo ""
     draw_line
@@ -134,13 +154,13 @@ draw_dashboard() {
 
 install_dependencies() {
     local NEED_INSTALL=false
-    if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null || ! command -v lsof &> /dev/null || ! command -v nc &> /dev/null; then
+    if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null || ! command -v lsof &> /dev/null || ! command -v nc &> /dev/null || ! command -v bc &> /dev/null; then
         NEED_INSTALL=true
     fi
 
     if [ "$NEED_INSTALL" = true ]; then
         echo -e "${BLUE}Installing core dependencies...${NC}"
-        apt-get update -q && apt-get install -y curl openssl lsof nano netcat-openbsd vnstat -q
+        apt-get update -q && apt-get install -y curl openssl lsof nano netcat-openbsd vnstat bc -q logrotate
     fi
 
     if [ ! -f "$YQ_BIN" ]; then
@@ -160,9 +180,7 @@ install_dependencies() {
     if [ ! -s "$CONFIG_FILE" ]; then echo "services: []" > "$CONFIG_FILE"; fi
 }
 
-# --- FIX: Robust Shortcut Installation ---
 setup_shortcut() {
-    # If igost doesn't exist OR if it's empty
     if [ ! -s "$SHORTCUT_BIN" ]; then
         echo ""
         draw_line
@@ -170,23 +188,19 @@ setup_shortcut() {
         echo -e "  ${BLUE}Allows you to run the manager by typing 'igost'.${NC}"
         echo ""
         
-        # Default to Yes if user presses Enter
         echo -ne "  ${HI_PINK}➤ Install (Y/n)? : ${NC}"
         read install_opt
-        install_opt=${install_opt:-y} # Default to y
+        install_opt=${install_opt:-y}
         
         if [[ "$install_opt" =~ ^[Yy]$ ]]; then
             echo -e "  ${YELLOW}Downloading script to $SHORTCUT_BIN...${NC}"
-            
-            # Download directly from repo to ensure we have the file
             curl -L -o "$SHORTCUT_BIN" -fsSL "$REPO_URL"
-            
             if [ -s "$SHORTCUT_BIN" ]; then
                 chmod +x "$SHORTCUT_BIN"
                 echo -e "  ${HI_GREEN}✔ Installed! Type 'igost' to run.${NC}"
                 sleep 2
             else
-                echo -e "  ${RED}✖ Download failed. Check internet connection.${NC}"
+                echo -e "  ${RED}✖ Download failed.${NC}"
                 sleep 2
             fi
         fi
@@ -244,16 +258,23 @@ create_service() {
     GOST_BIN=$(command -v gost)
     cat <<EOF > "$SERVICE_FILE"
 [Unit]
-Description=Gost Service
+Description=Gost Service High Performance
 After=network.target
 
 [Service]
 Type=simple
 User=root
+# Performance Tuning
+Environment="GOGC=20"
 ExecStart=$GOST_BIN -C $CONFIG_FILE
+# --- LOGS DISABLED TO PROTECT DISK ---
+StandardOutput=null
+StandardError=null
+# -------------------------------------
 Restart=always
 RestartSec=3
 LimitNOFILE=1048576
+LimitNPROC=512000
 
 [Install]
 WantedBy=multi-user.target
@@ -262,21 +283,46 @@ EOF
     systemctl enable gost >/dev/null 2>&1
 }
 
-# ==================================================
-#  INPUT HELPERS
-# ==================================================
 ask_input() { echo -ne "  ${HI_PINK}➤ $1 : ${NC}"; }
 section_title() { echo -e "\n  ${BOLD}${HI_CYAN}:: $1 ::${NC}"; }
 info_msg() { echo -e "  ${YELLOW}ℹ${NC} ${BLUE}$1${NC}"; }
 
 # ==================================================
-#  CORE FUNCTIONS
+#  AUTO OPTIMIZATION FUNCTIONS
+# ==================================================
+
+auto_clean_logs() {
+    # 1. Set Journald Limits (Max 50MB)
+    mkdir -p /etc/systemd/journald.conf.d
+    cat <<EOF > /etc/systemd/journald.conf.d/99-gost-manager.conf
+[Journal]
+SystemMaxUse=50M
+SystemKeepFree=100M
+SystemMaxFileSize=10M
+EOF
+    systemctl restart systemd-journald >/dev/null 2>&1
+
+    # 2. Vacuum Journal by Size
+    journalctl --vacuum-size=50M >/dev/null 2>&1
+
+    # 3. Truncate Syslog (Immediate)
+    truncate -s 0 /var/log/syslog 2>/dev/null
+    
+    echo -e "  ${HI_GREEN}✔ Storage Shield Activated: Logs restricted to 50MB.${NC}"
+    sleep 1
+}
+
+# ==================================================
+#  CORE FUNCTIONS (v9.1)
 # ==================================================
 
 add_tunnel() {
     draw_dashboard
     section_title "ADD DIRECT TUNNEL"
-    info_msg "Relays traffic directly from Client to Destination."
+    show_guide "Direct Tunnel & mTCP" \
+    "Use this for simple forwarding (Relay).\n  ${BOLD}[1-2] TCP/UDP:${NC} Standard forwarding.\n  ${BOLD}[3] mTCP:${NC} (Turbo) Sends multiple requests in one connection."
+    
+    show_warning
     echo ""
     ask_input "Service Name"; read s_name
     check_name_safety "$s_name" || { sleep 2; return; }
@@ -291,17 +337,160 @@ add_tunnel() {
     echo -e "  ${BOLD}Protocol Selection:${NC}"
     echo -e "  ${HI_CYAN}[1]${NC} TCP Only"
     echo -e "  ${HI_CYAN}[2]${NC} UDP Only"
-    echo -e "  ${HI_CYAN}[3]${NC} Dual Stack ${HI_GREEN}(Recommended)${NC}"
+    echo -e "  ${HI_CYAN}[3]${NC} mTCP ${HI_PINK}(Turbo Multiplex)${NC}"
+    echo -e "  ${HI_CYAN}[4]${NC} Dual Stack ${HI_GREEN}(TCP+UDP)${NC}"
     echo ""
     ask_input "Select"; read proto
     backup_config
-    if [[ "$proto" == "1" || "$proto" == "3" ]]; then
-        $YQ_BIN -i ".services += [{\"name\": \"$s_name-tcp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"listener\": {\"type\": \"tcp\"}, \"forwarder\": {\"nodes\": [{\"addr\": \"$dip:$dport\"}]}}]" "$CONFIG_FILE"
+    
+    node_tcp="{\"addr\": \"$dip:$dport\"}"
+    node_udp="{\"addr\": \"$dip:$dport\"}"
+    
+    if [[ "$proto" == "3" ]]; then
+        $YQ_BIN -i ".services += [{\"name\": \"$s_name-mtcp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"listener\": {\"type\": \"mtcp\"}, \"forwarder\": {\"nodes\": [$node_tcp]}}]" "$CONFIG_FILE"
     fi
-    if [[ "$proto" == "2" || "$proto" == "3" ]]; then
-        $YQ_BIN -i ".services += [{\"name\": \"$s_name-udp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"udp\"}, \"listener\": {\"type\": \"udp\"}, \"forwarder\": {\"nodes\": [{\"addr\": \"$dip:$dport\"}]}}]" "$CONFIG_FILE"
+    
+    if [[ "$proto" == "1" || "$proto" == "4" ]]; then
+        $YQ_BIN -i ".services += [{\"name\": \"$s_name-tcp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"listener\": {\"type\": \"tcp\"}, \"forwarder\": {\"nodes\": [$node_tcp]}}]" "$CONFIG_FILE"
+    fi
+    if [[ "$proto" == "2" || "$proto" == "4" ]]; then
+        $YQ_BIN -i ".services += [{\"name\": \"$s_name-udp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"udp\"}, \"listener\": {\"type\": \"udp\"}, \"forwarder\": {\"nodes\": [$node_udp]}}]" "$CONFIG_FILE"
     fi
     apply_config
+}
+
+add_secure() {
+    draw_dashboard
+    section_title "SECURE ENCRYPTED TUNNEL"
+    show_guide "Secure Protocols" \
+    "Choose protocol:\n  ${BOLD}mWSS:${NC} Turbo (Websocket+Mux).\n  ${BOLD}KCP:${NC} Anti-Packet Loss.\n  ${BOLD}Shadowsocks:${NC} With Cipher selection."
+
+    echo -e "  ${HI_CYAN}[1]${NC} Sender / Client   ${BLUE}(Iran Server)${NC}"
+    echo -e "  ${HI_CYAN}[2]${NC} Receiver / Server ${BLUE}(Foreign Server)${NC}"
+    echo ""
+    ask_input "Select Role"; read side
+    
+    if [[ "$side" == "1" ]]; then
+        section_title "SENDER CONFIGURATION"
+        show_warning
+        echo ""
+        ask_input "Service Name"; read s_name
+        check_name_safety "$s_name" || { sleep 2; return; }
+        ask_input "Local Port"; read lport
+        check_port_safety "$lport" || { sleep 2; return; }
+        echo ""
+        ask_input "Remote IP"; read raw_rip
+        rip=$(normalize_ip "$raw_rip")
+        ask_input "Remote Port"; read rport
+        
+        ask_input "SNI Domain (Optional)"; read sni
+        [[ -z "$sni" ]] && sni="google.com"
+
+        echo -e "\n  ${BOLD}Protocol:${NC}"
+        echo -e "  ${HI_CYAN}[1]${NC} WSS"
+        echo -e "  ${HI_CYAN}[2]${NC} mWSS ${HI_PINK}(Turbo)${NC}"
+        echo -e "  ${HI_CYAN}[3]${NC} gRPC"
+        echo -e "  ${HI_CYAN}[4]${NC} QUIC"
+        echo -e "  ${HI_CYAN}[5]${NC} H2   ${HI_GREEN}(HTTP/2)${NC}"
+        echo -e "  ${HI_CYAN}[6]${NC} KCP  ${YELLOW}(Anti-Loss)${NC}"
+        echo -e "  ${HI_CYAN}[7]${NC} Shadowsocks"
+        echo ""
+        ask_input "Select"; read t_opt
+        
+        case $t_opt in 
+            2) tr="mwss";; 3) tr="grpc";; 4) tr="quic";; 5) tr="h2";; 6) tr="kcp";; 7) tr="ss";; *) tr="wss";; 
+        esac
+
+        extra_meta=""
+        if [[ "$tr" == "ss" ]]; then
+            echo -e "\n  ${BOLD}Cipher:${NC}"
+            echo -e "  ${HI_CYAN}[1]${NC} AES-256-GCM"
+            echo -e "  ${HI_CYAN}[2]${NC} Chacha20-IETF-Poly1305"
+            echo -e "  ${HI_CYAN}[3]${NC} None"
+            ask_input "Select"; read c_opt
+            case $c_opt in 2) cipher="chacha20-ietf-poly1305";; 3) cipher="none";; *) cipher="aes-256-gcm";; esac
+            
+            ask_input "Password"; read ss_pass
+            extra_meta=", \"metadata\": {\"method\": \"$cipher\", \"password\": \"$ss_pass\"}"
+        fi
+
+        backup_config
+        
+        if [[ "$tr" == "ss" ]]; then
+             FWD_JSON="{\"nodes\": [{\"addr\": \"$rip:$rport\", \"connector\": {\"type\": \"shadowsocks\"$extra_meta}, \"dialer\": {\"type\": \"tcp\"}}]}"
+        else
+             FWD_JSON="{\"nodes\": [{\"addr\": \"$rip:$rport\", \"connector\": {\"type\": \"relay\"}, \"dialer\": {\"type\": \"$tr\", \"tls\": {\"secure\": false, \"serverName\": \"$sni\"}}}]}"
+        fi
+
+        $YQ_BIN -i ".services += [{\"name\": \"$s_name-dual\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"listener\": {\"type\": \"tcp\"}, \"forwarder\": $FWD_JSON}]" "$CONFIG_FILE"
+        $YQ_BIN -i ".services += [{\"name\": \"$s_name-udp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"udp\"}, \"listener\": {\"type\": \"udp\"}, \"forwarder\": $FWD_JSON}]" "$CONFIG_FILE"
+        
+        apply_config
+
+    elif [[ "$side" == "2" ]]; then
+        section_title "RECEIVER CONFIGURATION"
+        show_warning
+        echo ""
+        ask_input "Service Name"; read s_name
+        check_name_safety "$s_name" || { sleep 2; return; }
+        ask_input "Secure Port"; read lport
+        check_port_safety "$lport" || { sleep 2; return; }
+        
+        echo -e "\n  ${BOLD}Protocol:${NC}"
+        echo -e "  ${HI_CYAN}[1]${NC} WSS"
+        echo -e "  ${HI_CYAN}[2]${NC} mWSS ${HI_PINK}(Turbo)${NC}"
+        echo -e "  ${HI_CYAN}[3]${NC} gRPC"
+        echo -e "  ${HI_CYAN}[4]${NC} QUIC"
+        echo -e "  ${HI_CYAN}[5]${NC} H2"
+        echo -e "  ${HI_CYAN}[6]${NC} KCP"
+        echo -e "  ${HI_CYAN}[7]${NC} Shadowsocks"
+        echo ""
+        ask_input "Select"; read t_opt
+        case $t_opt in 
+            2) tr="mwss";; 3) tr="grpc";; 4) tr="quic";; 5) tr="h2";; 6) tr="kcp";; 7) tr="ss";; *) tr="wss";; 
+        esac
+
+        if [[ "$tr" == "ss" ]]; then
+            echo -e "\n  ${BOLD}Cipher:${NC}"
+            echo -e "  ${HI_CYAN}[1]${NC} AES-256-GCM"
+            echo -e "  ${HI_CYAN}[2]${NC} Chacha20-IETF-Poly1305"
+            echo -e "  ${HI_CYAN}[3]${NC} None"
+            ask_input "Select"; read c_opt
+            case $c_opt in 2) cipher="chacha20-ietf-poly1305";; 3) cipher="none";; *) cipher="aes-256-gcm";; esac
+            
+            ask_input "Password"; read ss_pass
+            tr="shadowsocks"
+        else
+            echo ""
+            ask_input "Forward IP"; read raw_tip
+            tip=$(normalize_ip "$raw_tip")
+            ask_input "Forward Port"; read tport
+            
+            ask_input "Cert Domain"; read cert_cn
+            [[ -z "$cert_cn" ]] && cert_cn="update.microsoft.com"
+            
+            local c_path="$CERT_DIR/cert_${lport}.pem"
+            local k_path="$CERT_DIR/key_${lport}.pem"
+            echo -e "  ${BLUE}Generating Certificates...${NC}"
+            openssl req -newkey rsa:2048 -nodes -keyout "$k_path" -x509 -days 3650 -out "$c_path" -subj "/CN=$cert_cn" > /dev/null 2>&1
+            chmod 600 "$k_path"
+        fi
+
+        backup_config
+        
+        if [[ "$tr" == "shadowsocks" ]]; then
+             ask_input "Forward IP"; read raw_tip
+             tip=$(normalize_ip "$raw_tip")
+             ask_input "Forward Port"; read tport
+             
+             s_name="$s_name" lport=":$lport" taddr="$tip:$tport" pass="$ss_pass" cipher="$cipher" \
+             $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": "shadowsocks", "metadata": {"password": env(pass), "method": env(cipher)}}, "listener": {"type": "tcp"}, "forwarder": {"nodes": [{"addr": env(taddr)}]}}]' "$CONFIG_FILE"
+        else
+             s_name="$s_name" lport=":$lport" tr="$tr" taddr="$tip:$tport" cert="$c_path" key="$k_path" \
+             $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": "relay"}, "listener": {"type": env(tr), "tls": {"certFile": env(cert), "keyFile": env(key)}}, "forwarder": {"nodes": [{"addr": env(taddr)}]}}]' "$CONFIG_FILE"
+        fi
+        apply_config
+    fi
 }
 
 add_lb() {
@@ -351,78 +540,70 @@ add_lb() {
     apply_config
 }
 
-add_secure() {
+add_simple_proxy() {
     draw_dashboard
-    section_title "SECURE ENCRYPTED TUNNEL"
-    info_msg "Hide traffic using TLS, WSS, or gRPC."
+    section_title "SIMPLE PROXY SERVER"
+    show_guide "Proxy Mode" \
+    "Turns this server into a direct proxy.\n  ${BOLD}SOCKS5 / HTTP:${NC} Use these in Telegram, Browser, or Apps.\n  ${BOLD}Auth:${NC} Set Username/Password for security."
+    
+    show_warning
     echo ""
-    echo -e "  ${HI_CYAN}[1]${NC} Sender / Client   ${BLUE}(Iran Server)${NC}"
-    echo -e "  ${HI_CYAN}[2]${NC} Receiver / Server ${BLUE}(Foreign Server)${NC}"
-    echo ""
-    ask_input "Select Role"; read side
-    if [[ "$side" == "1" ]]; then
-        section_title "SENDER CONFIGURATION"
-        ask_input "Service Name"; read s_name
-        check_name_safety "$s_name" || { sleep 2; return; }
-        ask_input "Local Port"; read lport
-        check_port_safety "$lport" || { sleep 2; return; }
-        echo ""
-        ask_input "Remote IP"; read raw_rip
-        rip=$(normalize_ip "$raw_rip")
-        ask_input "Remote Port"; read rport
-        ask_input "SNI Domain"; read sni
-        [[ -z "$sni" ]] && sni="google.com"
-        echo -e "\n  ${BOLD}Encryption Type:${NC}"
-        echo -e "  ${HI_CYAN}[1]${NC} WSS   ${BLUE}(Websocket Secure)${NC}"
-        echo -e "  ${HI_CYAN}[2]${NC} gRPC  ${BLUE}(Google RPC)${NC}"
-        echo -e "  ${HI_CYAN}[3]${NC} QUIC  ${BLUE}(UDP Transport)${NC}"
-        echo ""
-        ask_input "Select"; read t_opt
-        case $t_opt in 2) tr="grpc";; 3) tr="quic";; *) tr="wss";; esac
-        echo -e "\n  ${BOLD}Traffic Mode:${NC}"
-        echo -e "  ${HI_CYAN}[1]${NC} TCP Only"
-        echo -e "  ${HI_CYAN}[2]${NC} UDP Only"
-        echo -e "  ${HI_CYAN}[3]${NC} Dual Stack ${HI_GREEN}(Best)${NC}"
-        echo ""
-        ask_input "Select"; read proto
-        backup_config
-        FWD_JSON="{\"nodes\": [{\"addr\": \"$rip:$rport\", \"connector\": {\"type\": \"relay\"}, \"dialer\": {\"type\": \"$tr\", \"tls\": {\"secure\": false, \"serverName\": \"$sni\"}}}]}"
-        if [[ "$proto" == "1" || "$proto" == "3" ]]; then
-            $YQ_BIN -i ".services += [{\"name\": \"$s_name-tcp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"forwarder\": $FWD_JSON}]" "$CONFIG_FILE"
-        fi
-        if [[ "$proto" == "2" || "$proto" == "3" ]]; then
-            $YQ_BIN -i ".services += [{\"name\": \"$s_name-udp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"udp\"}, \"forwarder\": $FWD_JSON}]" "$CONFIG_FILE"
-        fi
-        apply_config
-    elif [[ "$side" == "2" ]]; then
-        section_title "RECEIVER CONFIGURATION"
-        ask_input "Service Name"; read s_name
-        check_name_safety "$s_name" || { sleep 2; return; }
-        ask_input "Secure Port"; read lport
-        check_port_safety "$lport" || { sleep 2; return; }
-        echo -e "\n  ${BOLD}Encryption Type:${NC}"
-        echo -e "  ${HI_CYAN}[1]${NC} WSS"
-        echo -e "  ${HI_CYAN}[2]${NC} gRPC"
-        echo -e "  ${HI_CYAN}[3]${NC} QUIC"
-        echo ""
-        ask_input "Select"; read t_opt
-        case $t_opt in 2) tr="grpc";; 3) tr="quic";; *) tr="wss";; esac
-        echo ""
-        ask_input "Forward IP"; read raw_tip
-        tip=$(normalize_ip "$raw_tip")
-        ask_input "Forward Port"; read tport
-        ask_input "Cert Domain"; read cert_cn
-        [[ -z "$cert_cn" ]] && cert_cn="update.microsoft.com"
-        local c_path="$CERT_DIR/cert_${lport}.pem"
-        local k_path="$CERT_DIR/key_${lport}.pem"
-        echo -e "  ${BLUE}Generating Certificates...${NC}"
-        openssl req -newkey rsa:2048 -nodes -keyout "$k_path" -x509 -days 3650 -out "$c_path" -subj "/CN=$cert_cn" > /dev/null 2>&1
-        chmod 600 "$k_path"
-        backup_config
-        s_name="$s_name" lport=":$lport" tr="$tr" taddr="$tip:$tport" cert="$c_path" key="$k_path" \
-        $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": "relay"}, "listener": {"type": env(tr), "tls": {"certFile": env(cert), "keyFile": env(key)}}, "forwarder": {"nodes": [{"addr": env(taddr)}]}}]' "$CONFIG_FILE"
-        apply_config
+    ask_input "Service Name"; read s_name
+    check_name_safety "$s_name" || { sleep 2; return; }
+    ask_input "Port"; read lport
+    check_port_safety "$lport" || { sleep 2; return; }
+    
+    echo -e "\n  ${BOLD}Type:${NC}"
+    echo -e "  ${HI_CYAN}[1]${NC} SOCKS5"
+    echo -e "  ${HI_CYAN}[2]${NC} HTTP"
+    ask_input "Select"; read p_opt
+    
+    ask_input "Username (Leave empty for none)"; read p_user
+    if [[ -n "$p_user" ]]; then
+        ask_input "Password"; read p_pass
     fi
+    
+    backup_config
+    if [[ "$p_opt" == "2" ]]; then handler="http"; else handler="socks5"; fi
+    
+    s_name="$s_name" lport=":$lport" handler="$handler" p_user="$p_user" p_pass="$p_pass"
+    
+    if [[ -n "$p_user" ]]; then
+         $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": env(handler), "auth": {"username": env(p_user), "password": env(p_pass)}}, "listener": {"type": "tcp"}}]' "$CONFIG_FILE"
+    else
+         $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": env(handler)}, "listener": {"type": "tcp"}}]' "$CONFIG_FILE"
+    fi
+    apply_config
+}
+
+setup_dns() {
+    draw_dashboard
+    section_title "SECURE DNS SERVER"
+    show_guide "Secure DNS (DoH)" \
+    "Sets up a DNS resolver on your server.\n  ${BOLD}Prevent Leaks:${NC} Forwards DNS queries securely to Cloudflare/Google.\n  ${BOLD}Protocol:${NC} Listens on UDP/TCP 53 (Standard)."
+    
+    ask_input "Service Name"; read s_name
+    check_name_safety "$s_name" || { sleep 2; return; }
+    ask_input "Local Port (Default 53)"; read lport
+    [[ -z "$lport" ]] && lport="53"
+    check_port_safety "$lport" || { sleep 2; return; }
+    
+    echo -e "\n  ${BOLD}Upstream Provider:${NC}"
+    echo -e "  ${HI_CYAN}[1]${NC} Cloudflare (1.1.1.1)"
+    echo -e "  ${HI_CYAN}[2]${NC} Google (8.8.8.8)"
+    echo -e "  ${HI_CYAN}[3]${NC} Custom"
+    ask_input "Select"; read d_opt
+    
+    case $d_opt in
+        1) up_dns="1.1.1.1";;
+        2) up_dns="8.8.8.8";;
+        *) ask_input "Enter DNS IP"; read up_dns;;
+    esac
+    
+    backup_config
+    $YQ_BIN -i ".services += [{\"name\": \"$s_name\", \"addr\": \":$lport\", \"handler\": {\"type\": \"dns\"}, \"listener\": {\"type\": \"udp\"}, \"forwarder\": {\"nodes\": [{\"addr\": \"$up_dns:53\"}]}}]" "$CONFIG_FILE"
+    
+    apply_config
 }
 
 delete_service() {
@@ -446,11 +627,10 @@ delete_service() {
     fi
 }
 
-# --- NEW: Setup Watchdog Function ---
 setup_watchdog() {
     draw_dashboard
     section_title "CPU OVERLOAD WATCHDOG"
-    info_msg "Automatically restarts Gost if CPU usage hits 99%."
+    info_msg "Automatically restarts Gost if CPU usage hits High Load."
     echo ""
     echo -e "  ${YELLOW}This will create a background job checking CPU every minute.${NC}"
     echo ""
@@ -461,16 +641,17 @@ setup_watchdog() {
     # Create the watchdog script
     cat <<EOF > /usr/local/bin/gost_watchdog.sh
 #!/bin/bash
-CPU_USAGE=\$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - \$1}' | cut -d. -f1)
-# Using 99% threshold to ensure we catch it before complete freeze
-if [ "\$CPU_USAGE" -gt 99 ]; then
+CPU_IDLE=\$(top -bn2 -d 0.5 | grep "Cpu(s)" | tail -n 1 | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print \$1}')
+CPU_USAGE=\$(echo "100 - \$CPU_IDLE" | bc -l 2>/dev/null | cut -d. -f1)
+CPU_USAGE=\${CPU_USAGE:-0}
+if [ "\$CPU_USAGE" -ge 95 ]; then
     systemctl restart gost
     echo "\$(date): CPU Critical (\$CPU_USAGE%). Gost Service Restarted." >> /var/log/gost_watchdog.log
 fi
 EOF
     chmod +x /usr/local/bin/gost_watchdog.sh
     
-    # Add to Cron (Check every minute)
+    if ! command -v bc &> /dev/null; then apt-get install -y bc > /dev/null 2>&1; fi
     (crontab -l 2>/dev/null; echo "* * * * * /usr/local/bin/gost_watchdog.sh") | sort -u | crontab -
     
     echo -e "\n  ${HI_GREEN}✔ Watchdog Activated successfully.${NC}"
@@ -478,13 +659,15 @@ EOF
 }
 
 menu_uninstall() {
-    ask_input "Uninstall Everything? (y/n)"; read c
-    if [[ "$c" == "y" ]]; then
+    draw_dashboard
+    section_title "UNINSTALL MANAGER"
+    echo -e "  ${RED}⚠ WARNING: This will remove Gost, all configs, and this script!${NC}"
+    echo ""
+    ask_input "Are you sure? (type 'yes' to confirm)"; read c
+    if [[ "$c" == "yes" ]]; then
         systemctl stop gost; systemctl disable gost
-        # Also remove watchdog and cron job
         rm -f /usr/local/bin/gost_watchdog.sh
         crontab -l | grep -v "gost_watchdog.sh" | crontab -
-        
         rm -rf "$CONFIG_DIR" "$SERVICE_FILE" "$YQ_BIN" "$SHORTCUT_BIN"
         systemctl daemon-reload
         rm -f "$(command -v gost)"
@@ -492,13 +675,135 @@ menu_uninstall() {
     fi
 }
 
+menu_exit() {
+    clear
+    echo -e "\n  ${HI_PINK}Goodbye! 👋${NC}"
+    exit 0
+}
+
+# ==================================================
+
+logs_menu() {
+    while true; do
+        draw_dashboard
+        section_title "LOGS & DISK CONTROL"
+        info_msg "Manage /var/log/journal and /var/log/syslog growth."
+        echo ""
+        echo -e "  ${HI_CYAN}[1]${NC} Follow Gost Logs (Live)"
+        echo -e "  ${HI_CYAN}[2]${NC} Journal Disk Usage"
+        echo -e "  ${HI_CYAN}[3]${NC} Vacuum Journal by Size"
+        echo -e "  ${HI_CYAN}[4]${NC} Vacuum Journal by Time"
+        echo -e "  ${HI_CYAN}[5]${NC} Set Journald Limits (Persistent)"
+        echo -e "  ${HI_CYAN}[6]${NC} Force Logrotate (syslog)"
+        echo -e "  ${HI_CYAN}[7]${NC} Truncate /var/log/syslog (Immediate)"
+        echo -e "  ${HI_CYAN}[0]${NC} Back"
+        echo ""
+        draw_line
+        ask_input "Select"; read lopt
+
+        case $lopt in
+            1)
+                clear
+                echo -e "${BLUE}--- Following gost logs (Ctrl+C to stop) ---${NC}"
+                journalctl -u gost -f
+                ;;
+            2)
+                echo ""
+                journalctl --disk-usage
+                echo ""
+                read -p "  Press Enter to continue..."
+                ;;
+            3)
+                echo ""
+                ask_input "Vacuum Size (e.g. 200M)"; read vsize
+                [[ -z "$vsize" ]] && vsize="200M"
+                echo -e "${BLUE}--- Vacuuming journal to size: $vsize ---${NC}"
+                journalctl --vacuum-size="$vsize"
+                echo ""
+                journalctl --disk-usage
+                echo ""
+                read -p "  Press Enter to continue..."
+                ;;
+            4)
+                echo ""
+                ask_input "Vacuum Time (e.g. 7d)"; read vtime
+                [[ -z "$vtime" ]] && vtime="7d"
+                echo -e "${BLUE}--- Vacuuming journal older than: $vtime ---${NC}"
+                journalctl --vacuum-time="$vtime"
+                echo ""
+                journalctl --disk-usage
+                echo ""
+                read -p "  Press Enter to continue..."
+                ;;
+            5)
+                echo ""
+                section_title "JOURNALD LIMITS"
+                info_msg "This creates: /etc/systemd/journald.conf.d/99-gost-manager.conf"
+                ask_input "SystemMaxUse (Default 300M)"; read jmax
+                [[ -z "$jmax" ]] && jmax="300M"
+                ask_input "SystemKeepFree (Default 500M)"; read jfree
+                [[ -z "$jfree" ]] && jfree="500M"
+                ask_input "SystemMaxFileSize (Default 50M)"; read jfile
+                [[ -z "$jfile" ]] && jfile="50M"
+
+                mkdir -p /etc/systemd/journald.conf.d
+                cat <<EOF > /etc/systemd/journald.conf.d/99-gost-manager.conf
+[Journal]
+SystemMaxUse=$jmax
+SystemKeepFree=$jfree
+SystemMaxFileSize=$jfile
+EOF
+                systemctl restart systemd-journald
+                echo ""
+                echo -e "  ${HI_GREEN}✔ Journald limits applied.${NC}"
+                journalctl --disk-usage
+                echo ""
+                read -p "  Press Enter to continue..."
+                ;;
+            6)
+                echo ""
+                if ! command -v logrotate &> /dev/null; then
+                    echo -e "  ${RED}✖ logrotate not installed.${NC}"
+                    read -p "  Press Enter..."
+                else
+                    echo -e "${BLUE}--- Running logrotate (forced) ---${NC}"
+                    logrotate -f /etc/logrotate.conf
+                    echo ""
+                    du -sh /var/log/syslog* 2>/dev/null | sort -h
+                    echo ""
+                    read -p "  Press Enter to continue..."
+                fi
+                ;;
+            7)
+                echo ""
+                echo -e "  ${RED}⚠ WARNING:${NC} ${YELLOW}This will EMPTY /var/log/syslog now.${NC}"
+                ask_input "Type YES to confirm"; read c
+                if [[ "$c" == "YES" ]]; then
+                    truncate -s 0 /var/log/syslog 2>/dev/null
+                    echo -e "  ${HI_GREEN}✔ syslog truncated.${NC}"
+                else
+                    echo -e "  ${YELLOW}Canceled.${NC}"
+                fi
+                echo ""
+                read -p "  Press Enter to continue..."
+                ;;
+            0)
+                return
+                ;;
+            *)
+                sleep 0.5
+                ;;
+        esac
+    done
+}
 # ==================================================
 #  MAIN LOOP
 # ==================================================
 
 install_dependencies
 create_service
-setup_shortcut  # Ensure 'igost' is installed
+auto_clean_logs   # <--- INITIAL AUTO CLEANUP
+setup_shortcut
 
 while true; do
     draw_dashboard
@@ -507,12 +812,14 @@ while true; do
         1) add_tunnel ;;
         2) add_secure ;;
         3) add_lb ;;
-        4) delete_service ;;
-        5) backup_config; nano "$CONFIG_FILE"; apply_config ;;
-        6) journalctl -u gost -f ;;
-        7) menu_uninstall ;;
-        8) setup_watchdog ;;
-        0) exit 0 ;;
+        4) add_simple_proxy ;;
+        5) setup_dns ;;
+        6) delete_service ;;
+        7) backup_config; nano "$CONFIG_FILE"; apply_config ;;
+        8) logs_menu ;;
+        9) setup_watchdog ;;
+        10) menu_uninstall ;;
+        0) menu_exit ;;
         *) sleep 0.5 ;;
     esac
 done
