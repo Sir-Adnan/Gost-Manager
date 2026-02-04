@@ -99,7 +99,7 @@ show_guide() {
 }
 
 show_warning() {
-    echo -e "  ${RED}⚠ WARNING:${NC} ${YELLOW}Use only A-Z, 0-9. NO special chars ( \" ' $ \ )!${NC}"
+    echo -e "  ${RED}⚠ WARNING:${NC} ${YELLOW}Use only A-Z, 0-9. NO special chars ( \\\" ' $ \\ )!${NC}"
 }
 
 draw_dashboard() {
@@ -160,7 +160,7 @@ install_dependencies() {
 
     if [ "$NEED_INSTALL" = true ]; then
         echo -e "${BLUE}Installing core dependencies...${NC}"
-        apt-get update -q && apt-get install -y curl openssl lsof nano netcat-openbsd vnstat bc -q
+        apt-get update -q && apt-get install -y curl openssl lsof nano netcat-openbsd vnstat bc -q logrotate
     fi
 
     if [ ! -f "$YQ_BIN" ]; then
@@ -654,6 +654,120 @@ menu_exit() {
 }
 
 # ==================================================
+
+logs_menu() {
+    while true; do
+        draw_dashboard
+        section_title "LOGS & DISK CONTROL"
+        info_msg "Manage /var/log/journal and /var/log/syslog growth."
+        echo ""
+        echo -e "  ${HI_CYAN}[1]${NC} Follow Gost Logs (Live)"
+        echo -e "  ${HI_CYAN}[2]${NC} Journal Disk Usage"
+        echo -e "  ${HI_CYAN}[3]${NC} Vacuum Journal by Size"
+        echo -e "  ${HI_CYAN}[4]${NC} Vacuum Journal by Time"
+        echo -e "  ${HI_CYAN}[5]${NC} Set Journald Limits (Persistent)"
+        echo -e "  ${HI_CYAN}[6]${NC} Force Logrotate (syslog)"
+        echo -e "  ${HI_CYAN}[7]${NC} Truncate /var/log/syslog (Immediate)"
+        echo -e "  ${HI_CYAN}[0]${NC} Back"
+        echo ""
+        draw_line
+        ask_input "Select"; read lopt
+
+        case $lopt in
+            1)
+                clear
+                echo -e "${BLUE}--- Following gost logs (Ctrl+C to stop) ---${NC}"
+                journalctl -u gost -f
+                ;;
+            2)
+                echo ""
+                journalctl --disk-usage
+                echo ""
+                read -p "  Press Enter to continue..."
+                ;;
+            3)
+                echo ""
+                ask_input "Vacuum Size (e.g. 200M)"; read vsize
+                [[ -z "$vsize" ]] && vsize="200M"
+                echo -e "${BLUE}--- Vacuuming journal to size: $vsize ---${NC}"
+                journalctl --vacuum-size="$vsize"
+                echo ""
+                journalctl --disk-usage
+                echo ""
+                read -p "  Press Enter to continue..."
+                ;;
+            4)
+                echo ""
+                ask_input "Vacuum Time (e.g. 7d)"; read vtime
+                [[ -z "$vtime" ]] && vtime="7d"
+                echo -e "${BLUE}--- Vacuuming journal older than: $vtime ---${NC}"
+                journalctl --vacuum-time="$vtime"
+                echo ""
+                journalctl --disk-usage
+                echo ""
+                read -p "  Press Enter to continue..."
+                ;;
+            5)
+                echo ""
+                section_title "JOURNALD LIMITS"
+                info_msg "This creates: /etc/systemd/journald.conf.d/99-gost-manager.conf"
+                ask_input "SystemMaxUse (Default 300M)"; read jmax
+                [[ -z "$jmax" ]] && jmax="300M"
+                ask_input "SystemKeepFree (Default 500M)"; read jfree
+                [[ -z "$jfree" ]] && jfree="500M"
+                ask_input "SystemMaxFileSize (Default 50M)"; read jfile
+                [[ -z "$jfile" ]] && jfile="50M"
+
+                mkdir -p /etc/systemd/journald.conf.d
+                cat <<EOF > /etc/systemd/journald.conf.d/99-gost-manager.conf
+[Journal]
+SystemMaxUse=$jmax
+SystemKeepFree=$jfree
+SystemMaxFileSize=$jfile
+EOF
+                systemctl restart systemd-journald
+                echo ""
+                echo -e "  ${HI_GREEN}✔ Journald limits applied.${NC}"
+                journalctl --disk-usage
+                echo ""
+                read -p "  Press Enter to continue..."
+                ;;
+            6)
+                echo ""
+                if ! command -v logrotate &> /dev/null; then
+                    echo -e "  ${RED}✖ logrotate not installed.${NC}"
+                    read -p "  Press Enter..."
+                else
+                    echo -e "${BLUE}--- Running logrotate (forced) ---${NC}"
+                    logrotate -f /etc/logrotate.conf
+                    echo ""
+                    du -sh /var/log/syslog* 2>/dev/null | sort -h
+                    echo ""
+                    read -p "  Press Enter to continue..."
+                fi
+                ;;
+            7)
+                echo ""
+                echo -e "  ${RED}⚠ WARNING:${NC} ${YELLOW}This will EMPTY /var/log/syslog now.${NC}"
+                ask_input "Type YES to confirm"; read c
+                if [[ "$c" == "YES" ]]; then
+                    truncate -s 0 /var/log/syslog 2>/dev/null
+                    echo -e "  ${HI_GREEN}✔ syslog truncated.${NC}"
+                else
+                    echo -e "  ${YELLOW}Canceled.${NC}"
+                fi
+                echo ""
+                read -p "  Press Enter to continue..."
+                ;;
+            0)
+                return
+                ;;
+            *)
+                sleep 0.5
+                ;;
+        esac
+    done
+}
 #  MAIN LOOP
 # ==================================================
 
@@ -672,7 +786,7 @@ while true; do
         5) setup_dns ;;
         6) delete_service ;;
         7) backup_config; nano "$CONFIG_FILE"; apply_config ;;
-        8) journalctl -u gost -f ;;
+        8) logs_menu ;;
         9) setup_watchdog ;;
         10) menu_uninstall ;;
         0) menu_exit ;;
