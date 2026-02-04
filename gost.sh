@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ==================================================
-# Gost Manager - IGOST EDITION (v8.1)
+# Gost Manager - IGOST EDITION (v8.2)
 # Creator: UnknownZero
-# Focus: Fix Binary Conflict, Auto-Install Shortcut
+# Focus: Added CPU Watchdog (Auto-Restart)
 # ==================================================
 
 # --- Colors (Safe Palette) ---
@@ -31,6 +31,7 @@ ICON_CPU="🧠"
 ICON_RAM="💾"
 ICON_NET="🌐"
 ICON_INSTALL="💿"
+ICON_RESTART="🔄"
 
 # --- Paths ---
 CONFIG_DIR="/etc/gost"
@@ -61,7 +62,7 @@ draw_logo() {
     echo "/ /_/ / / /_/ /___/ / / / /       "
     echo "\____/  \____//____/ /_/ /_/      "
     echo "                                  "
-    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 8 . 1${NC}"
+    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 8 . 2${NC}"
     echo -e "         ${HI_PINK}By UnknownZero${NC}"
     echo ""
 }
@@ -119,6 +120,7 @@ draw_dashboard() {
     print_option "5" "$ICON_GEAR" "Edit Config" "Manual (Nano)"
     print_option "6" "$ICON_LOGS" "View Logs" "Live Monitor"
     print_option "7" "$ICON_EXIT" "Uninstall" "Remove All"
+    print_option "8" "$ICON_RESTART" "Auto-Restart" "Fix High CPU Usage"
     print_option "0" "🔙" "Exit" "Close Script"
     
     echo ""
@@ -444,10 +446,45 @@ delete_service() {
     fi
 }
 
+# --- NEW: Setup Watchdog Function ---
+setup_watchdog() {
+    draw_dashboard
+    section_title "CPU OVERLOAD WATCHDOG"
+    info_msg "Automatically restarts Gost if CPU usage hits 99%."
+    echo ""
+    echo -e "  ${YELLOW}This will create a background job checking CPU every minute.${NC}"
+    echo ""
+    
+    ask_input "Enable Watchdog? (y/n)"; read confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then return; fi
+    
+    # Create the watchdog script
+    cat <<EOF > /usr/local/bin/gost_watchdog.sh
+#!/bin/bash
+CPU_USAGE=\$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - \$1}' | cut -d. -f1)
+# Using 99% threshold to ensure we catch it before complete freeze
+if [ "\$CPU_USAGE" -gt 99 ]; then
+    systemctl restart gost
+    echo "\$(date): CPU Critical (\$CPU_USAGE%). Gost Service Restarted." >> /var/log/gost_watchdog.log
+fi
+EOF
+    chmod +x /usr/local/bin/gost_watchdog.sh
+    
+    # Add to Cron (Check every minute)
+    (crontab -l 2>/dev/null; echo "* * * * * /usr/local/bin/gost_watchdog.sh") | sort -u | crontab -
+    
+    echo -e "\n  ${HI_GREEN}✔ Watchdog Activated successfully.${NC}"
+    sleep 2
+}
+
 menu_uninstall() {
     ask_input "Uninstall Everything? (y/n)"; read c
     if [[ "$c" == "y" ]]; then
         systemctl stop gost; systemctl disable gost
+        # Also remove watchdog and cron job
+        rm -f /usr/local/bin/gost_watchdog.sh
+        crontab -l | grep -v "gost_watchdog.sh" | crontab -
+        
         rm -rf "$CONFIG_DIR" "$SERVICE_FILE" "$YQ_BIN" "$SHORTCUT_BIN"
         systemctl daemon-reload
         rm -f "$(command -v gost)"
@@ -474,6 +511,7 @@ while true; do
         5) backup_config; nano "$CONFIG_FILE"; apply_config ;;
         6) journalctl -u gost -f ;;
         7) menu_uninstall ;;
+        8) setup_watchdog ;;
         0) exit 0 ;;
         *) sleep 0.5 ;;
     esac
