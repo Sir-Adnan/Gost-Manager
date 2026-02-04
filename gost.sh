@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ==================================================
-# Gost Manager - ADAPTIVE EDITION (v7.1)
+# Gost Manager - CONFLICT FIX EDITION (v8.0)
 # Creator: UnknownZero
-# Focus: High Contrast, Light/Dark Theme Safe, Auto-Shortcut
+# Focus: Fix Binary/Script Conflict, Adaptive UI
 # ==================================================
 
 # --- Colors (Safe Palette) ---
@@ -38,7 +38,8 @@ CONFIG_FILE="/etc/gost/config.yaml"
 SERVICE_FILE="/etc/systemd/system/gost.service"
 CERT_DIR="/etc/gost/certs"
 YQ_BIN="/usr/bin/yq"
-SHORTCUT_BIN="/usr/local/bin/gost"
+# --- FIX: Changed shortcut name to avoid conflict with binary ---
+SHORTCUT_BIN="/usr/local/bin/gmenu"
 REPO_URL="https://raw.githubusercontent.com/Sir-Adnan/Gost-Manager/main/gost.sh"
 
 # --- Root Check ---
@@ -59,7 +60,7 @@ draw_logo() {
     echo "/ /_/ / / /_/ /___/ / / / /       "
     echo "\____/  \____//____/ /_/ /_/      "
     echo "                                  "
-    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 7 . 1${NC}"
+    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 8 . 0${NC}"
     echo -e "         ${HI_PINK}By UnknownZero${NC}"
     echo ""
 }
@@ -156,21 +157,21 @@ install_dependencies() {
     if [ ! -s "$CONFIG_FILE" ]; then echo "services: []" > "$CONFIG_FILE"; fi
 }
 
-# --- NEW: Shortcut Setup Function ---
+# --- FIX: Shortcut Setup Function ---
 setup_shortcut() {
     if [ ! -f "$SHORTCUT_BIN" ]; then
         echo ""
         draw_line
         echo -e "  ${ICON_INSTALL}  ${BOLD}Install Shortcut?${NC}"
-        echo -e "  ${BLUE}You can type 'gost' to run this script later.${NC}"
+        echo -e "  ${BLUE}You can type 'gmenu' to run this script later.${NC}"
         echo ""
         echo -ne "  ${HI_PINK}➤ Install (y/n)? : ${NC}"
         read install_opt
         if [[ "$install_opt" == "y" || "$install_opt" == "Y" ]]; then
-            echo -e "  ${YELLOW}Downloading latest version...${NC}"
-            curl -o "$SHORTCUT_BIN" -fsSL "$REPO_URL"
+            # We copy the current running script to the shortcut location
+            cp "$0" "$SHORTCUT_BIN"
             chmod +x "$SHORTCUT_BIN"
-            echo -e "  ${HI_GREEN}✔ Shortcut installed! Type 'gost' to run.${NC}"
+            echo -e "  ${HI_GREEN}✔ Shortcut installed! Type 'gmenu' to run.${NC}"
             sleep 2
         fi
     fi
@@ -446,7 +447,7 @@ menu_uninstall() {
 
 install_dependencies
 create_service
-setup_shortcut  # Check and Install Shortcut if needed
+setup_shortcut  # Checks and installs 'gmenu' shortcut
 
 while true; do
     draw_dashboard
