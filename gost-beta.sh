@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ==================================================
-# Gost Manager - TURBO EDITION (v9.0 Final)
+# Gost Manager - STABLE EDITION (v9.1)
 # Creator: UnknownZero
-# Focus: Mux, KCP/H2/SS, DNS, Proxy, Fixes
+# Focus: FIX "Invalid Argument" Crash
 # ==================================================
 
 # --- Colors (Safe Palette) ---
@@ -64,7 +64,7 @@ draw_logo() {
     echo "/ /_/ / / /_/ /___/ / / / /       "
     echo "\____/  \____//____/ /_/ /_/      "
     echo "                                  "
-    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 9 . 0${NC}"
+    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 9 . 1${NC}"
     echo -e "         ${HI_PINK}By UnknownZero${NC}"
     echo ""
 }
@@ -266,7 +266,8 @@ Type=simple
 User=root
 # Performance Tuning
 Environment="GOGC=20"
-ExecStart=$GOST_BIN -C $CONFIG_FILE --log.level=fatal
+# --- FIXED: Removed invalid log flag that caused crash ---
+ExecStart=$GOST_BIN -C $CONFIG_FILE
 Restart=always
 RestartSec=3
 LimitNOFILE=1048576
@@ -284,7 +285,7 @@ section_title() { echo -e "\n  ${BOLD}${HI_CYAN}:: $1 ::${NC}"; }
 info_msg() { echo -e "  ${YELLOW}ℹ${NC} ${BLUE}$1${NC}"; }
 
 # ==================================================
-#  CORE FUNCTIONS (v9.0)
+#  CORE FUNCTIONS (v9.1)
 # ==================================================
 
 add_tunnel() {
