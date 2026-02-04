@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ==================================================
-# Gost Manager - STABLE EDITION (v9.1)
+# Gost Manager - STABLE EDITION (v9.1-MOD)
 # Creator: UnknownZero
-# Focus: FIX "Invalid Argument" Crash
+# Focus: FIX "Invalid Argument" Crash & AUTO-LOG-CLEAN
 # ==================================================
 
 # --- Colors (Safe Palette) ---
@@ -266,8 +266,11 @@ Type=simple
 User=root
 # Performance Tuning
 Environment="GOGC=20"
-# --- FIXED: Removed invalid log flag that caused crash ---
 ExecStart=$GOST_BIN -C $CONFIG_FILE
+# --- LOGS DISABLED TO PROTECT DISK ---
+StandardOutput=null
+StandardError=null
+# -------------------------------------
 Restart=always
 RestartSec=3
 LimitNOFILE=1048576
@@ -283,6 +286,31 @@ EOF
 ask_input() { echo -ne "  ${HI_PINK}➤ $1 : ${NC}"; }
 section_title() { echo -e "\n  ${BOLD}${HI_CYAN}:: $1 ::${NC}"; }
 info_msg() { echo -e "  ${YELLOW}ℹ${NC} ${BLUE}$1${NC}"; }
+
+# ==================================================
+#  AUTO OPTIMIZATION FUNCTIONS
+# ==================================================
+
+auto_clean_logs() {
+    # 1. Set Journald Limits (Max 50MB)
+    mkdir -p /etc/systemd/journald.conf.d
+    cat <<EOF > /etc/systemd/journald.conf.d/99-gost-manager.conf
+[Journal]
+SystemMaxUse=50M
+SystemKeepFree=100M
+SystemMaxFileSize=10M
+EOF
+    systemctl restart systemd-journald >/dev/null 2>&1
+
+    # 2. Vacuum Journal by Size
+    journalctl --vacuum-size=50M >/dev/null 2>&1
+
+    # 3. Truncate Syslog (Immediate)
+    truncate -s 0 /var/log/syslog 2>/dev/null
+    
+    echo -e "  ${HI_GREEN}✔ Storage Shield Activated: Logs restricted to 50MB.${NC}"
+    sleep 1
+}
 
 # ==================================================
 #  CORE FUNCTIONS (v9.1)
@@ -768,11 +796,13 @@ EOF
         esac
     done
 }
+# ==================================================
 #  MAIN LOOP
 # ==================================================
 
 install_dependencies
 create_service
+auto_clean_logs   # <--- INITIAL AUTO CLEANUP
 setup_shortcut
 
 while true; do
