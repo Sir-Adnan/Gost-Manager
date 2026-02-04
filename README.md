@@ -14,7 +14,7 @@
 ## 🖼️ تصاویر محیط اسکریپت (Screenshots)
 
 <p align="center">
-  <img src="/images/main.png" width="45%" alt="Menu">
+  <img src="/images/main.png" width="60%" alt="Menu">
 </p>
 
 ## ✨ ویژگی‌های کلیدی (Features)
