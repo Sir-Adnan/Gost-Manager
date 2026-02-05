@@ -1,9 +1,13 @@
 #!/bin/bash
 
 # ==================================================
-# Gost Manager - STABLE EDITION (v9.1-MOD)
-# Creator: UnknownZero
-# Focus: FIX "Invalid Argument" Crash & AUTO-LOG-CLEAN
+# Gost Manager - ULTIMATE SILENT (v9.3.2)
+# Creator: UnknownZero (MOD by request)
+# Focus:
+#  - GOGC=100 (High Performance for 4GB+ RAM)
+#  - Detailed Logs Menu Guide
+#  - Disk tiny friendly + minimum debug
+#  - Journald limits + vacuum auto at startup
 # ==================================================
 
 # --- Colors (Safe Palette) ---
@@ -53,6 +57,33 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # ==================================================
+#  SMALL UTILS
+# ==================================================
+
+confirm_yes() {
+    # Accept: y, Y, yes, YES, Yes, yEs, ...
+    local ans="$1"
+    [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]
+}
+
+ask_input() { echo -ne "  ${HI_PINK}➤ $1 : ${NC}"; }
+section_title() { echo -e "\n  ${BOLD}${HI_CYAN}:: $1 ::${NC}"; }
+info_msg() { echo -e "  ${YELLOW}ℹ${NC} ${BLUE}$1${NC}"; }
+
+normalize_ip() {
+    local input_ip=$1
+    if [[ "$input_ip" == *":"* ]]; then
+        if [[ "$input_ip" == \[*\] ]]; then echo "$input_ip"; else echo "[$input_ip]"; fi
+    else
+        echo "$input_ip"
+    fi
+}
+
+validate_port() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
+
+backup_config() { cp "$CONFIG_FILE" "${CONFIG_FILE}.bak" 2>/dev/null; }
+
+# ==================================================
 #  VISUAL ENGINE
 # ==================================================
 
@@ -64,7 +95,7 @@ draw_logo() {
     echo "/ /_/ / / /_/ /___/ / / / /       "
     echo "\____/  \____//____/ /_/ /_/      "
     echo "                                  "
-    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 9 . 1${NC}"
+    echo -e "    ${PURPLE}M  A  N  A  G  E  R    ${BOLD}v 9 . 3${NC}"
     echo -e "         ${HI_PINK}By UnknownZero${NC}"
     echo ""
 }
@@ -99,38 +130,69 @@ show_guide() {
 }
 
 show_warning() {
-    echo -e "  ${RED}⚠ WARNING:${NC} ${YELLOW}Use only A-Z, 0-9. NO special chars ( \\\" ' $ \\ )!${NC}"
+    echo -e "  ${RED}⚠ WARNING:${NC} ${YELLOW}Use only A-Z, 0-9. NO special chars ( \" ' $ \\ )!${NC}"
+}
+
+# --------------------------------------------------
+# Dashboard Caching (reduce CPU on busy servers)
+# --------------------------------------------------
+CACHE_TTL=5
+LAST_STATS_TS=0
+C_SERVER_IP=""
+C_RAM_USAGE=""
+C_LOAD=""
+C_TUNNELS="0"
+
+refresh_stats_if_needed() {
+    local now
+    now=$(date +%s)
+    if (( now - LAST_STATS_TS < CACHE_TTL )); then
+        return 0
+    fi
+    LAST_STATS_TS=$now
+
+    C_SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    C_RAM_USAGE=$(free -h 2>/dev/null | awk '/Mem:/ {print $3 "/" $2}')
+    C_LOAD=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+
+    if [ -f "$CONFIG_FILE" ]; then
+        local t
+        t=$($YQ_BIN '.services | length' "$CONFIG_FILE" 2>/dev/null)
+        [[ -z "$t" ]] && t="0"
+        C_TUNNELS="$t"
+    else
+        C_TUNNELS="0"
+    fi
 }
 
 draw_dashboard() {
     clear
     draw_logo
     draw_line
-    
-    SERVER_IP=$(hostname -I | awk '{print $1}')
-    RAM_USAGE=$(free -h | awk '/Mem:/ {print $3 "/" $2}')
-    LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | tr -d ' ')
-    
-    if [ -f "$CONFIG_FILE" ]; then
-        TUNNELS=$($YQ_BIN '.services | length' "$CONFIG_FILE" 2>/dev/null)
-    else
-        TUNNELS=0
-    fi
-    [[ -z "$TUNNELS" ]] && TUNNELS=0
 
+    refresh_stats_if_needed
+
+    local STATUS
     if systemctl is-active --quiet gost; then
         STATUS="${HI_GREEN}ACTIVE${NC}"
     else
         STATUS="${RED}OFFLINE${NC}"
     fi
 
-    echo -e "  ${ICON_NET} IP: ${BOLD}${SERVER_IP}${NC}"
-    echo -e "  ${ICON_RAM} RAM: ${BOLD}${RAM_USAGE}${NC}   ${ICON_CPU} Load: ${BOLD}${LOAD}${NC}"
-    echo -e "  ${ICON_GEAR} Status: ${STATUS}   ${ICON_ROCKET} Tunnels: ${HI_GREEN}${TUNNELS}${NC}"
-    
+    local DEBUG_MODE
+    if grep -q "^StandardOutput=journal" "$SERVICE_FILE" 2>/dev/null; then
+        DEBUG_MODE="${YELLOW}[DEBUG ON]${NC}"
+    else
+        DEBUG_MODE="${HI_GREEN}[SILENT]${NC}"
+    fi
+
+    echo -e "  ${ICON_NET} IP: ${BOLD}${C_SERVER_IP}${NC}"
+    echo -e "  ${ICON_RAM} RAM: ${BOLD}${C_RAM_USAGE}${NC}   ${ICON_CPU} Load: ${BOLD}${C_LOAD}${NC}"
+    echo -e "  ${ICON_GEAR} Status: ${STATUS}   ${ICON_LOGS} Mode: ${DEBUG_MODE}   ${ICON_ROCKET} Tunnels: ${HI_GREEN}${C_TUNNELS}${NC}"
+
     draw_line
     echo ""
-    
+
     print_option "1" "$ICON_ROCKET" "Direct Tunnel" "Simple / mTCP"
     print_option "2" "$ICON_LOCK" "Secure Tunnel" "WSS/KCP/H2/SS"
     print_option "3" "$ICON_LB" "Load Balancer" "Multi-node Dist"
@@ -138,35 +200,42 @@ draw_dashboard() {
     print_option "5" "$ICON_DNS" "Secure DNS" "DoH / UDP"
     print_option "6" "$ICON_TRASH" "Delete Service" "Remove Active"
     print_option "7" "$ICON_GEAR" "Edit Config" "Manual (Nano)"
-    print_option "8" "$ICON_LOGS" "View Logs" "Live Monitor"
-    print_option "9" "$ICON_RESTART" "Auto-Restart" "Watchdog (CPU)"
+    print_option "8" "$ICON_LOGS" "Logs" "Disk & Debug"
+    print_option "9" "$ICON_RESTART" "Auto-Restart" "Watchdog (Light)"
     print_option "10" "$ICON_TRASH" "Uninstall" "Remove All"
     print_option "0" "$ICON_EXIT" "Exit" "Close Script"
-    
+
     echo ""
     draw_line
     printf "  ${HI_PINK}➤ Select Option : ${NC}"
 }
 
 # ==================================================
-#  HELPER FUNCTIONS
+#  DEPENDENCIES
 # ==================================================
 
 install_dependencies() {
     local NEED_INSTALL=false
-    if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null || ! command -v lsof &> /dev/null || ! command -v nc &> /dev/null || ! command -v bc &> /dev/null; then
+    if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null || ! command -v lsof &> /dev/null || ! command -v nc &> /dev/null; then
         NEED_INSTALL=true
     fi
 
     if [ "$NEED_INSTALL" = true ]; then
         echo -e "${BLUE}Installing core dependencies...${NC}"
-        apt-get update -q && apt-get install -y curl openssl lsof nano netcat-openbsd vnstat bc -q logrotate
+        apt-get update -q && apt-get install -y curl openssl lsof nano netcat-openbsd vnstat -q logrotate
     fi
 
     if [ ! -f "$YQ_BIN" ]; then
+        local ARCH YQ_URL
         ARCH=$(dpkg --print-architecture)
-        if [[ "$ARCH" == "amd64" ]]; then YQ_URL="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"; 
-        elif [[ "$ARCH" == "arm64" ]]; then YQ_URL="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_arm64"; fi
+        if [[ "$ARCH" == "amd64" ]]; then
+            YQ_URL="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+        elif [[ "$ARCH" == "arm64" ]]; then
+            YQ_URL="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_arm64"
+        else
+            echo -e "${RED}Unsupported architecture for yq: ${ARCH}${NC}"
+            exit 1
+        fi
         curl -L -o "$YQ_BIN" "$YQ_URL" > /dev/null 2>&1
         chmod +x "$YQ_BIN"
     fi
@@ -174,7 +243,7 @@ install_dependencies() {
     if ! command -v gost &> /dev/null; then
         bash <(curl -fsSL https://github.com/go-gost/gost/raw/master/install.sh) --install > /dev/null 2>&1
     fi
-    
+
     mkdir -p "$CONFIG_DIR" "$CERT_DIR"
     chmod 700 "$CERT_DIR"
     if [ ! -s "$CONFIG_FILE" ]; then echo "services: []" > "$CONFIG_FILE"; fi
@@ -187,12 +256,12 @@ setup_shortcut() {
         echo -e "  ${ICON_INSTALL}  ${BOLD}Setup 'igost' Shortcut?${NC}"
         echo -e "  ${BLUE}Allows you to run the manager by typing 'igost'.${NC}"
         echo ""
-        
-        echo -ne "  ${HI_PINK}➤ Install (Y/n)? : ${NC}"
-        read install_opt
+
+        echo -ne "  ${HI_PINK}➤ Install (y/yes to confirm)? : ${NC}"
+        read -r install_opt
         install_opt=${install_opt:-y}
-        
-        if [[ "$install_opt" =~ ^[Yy]$ ]]; then
+
+        if confirm_yes "$install_opt"; then
             echo -e "  ${YELLOW}Downloading script to $SHORTCUT_BIN...${NC}"
             curl -L -o "$SHORTCUT_BIN" -fsSL "$REPO_URL"
             if [ -s "$SHORTCUT_BIN" ]; then
@@ -207,23 +276,12 @@ setup_shortcut() {
     fi
 }
 
-normalize_ip() {
-    local input_ip=$1
-    if [[ "$input_ip" == *":"* ]]; then
-        if [[ "$input_ip" == \[*\] ]]; then echo "$input_ip"; else echo "[$input_ip]"; fi
-    else
-        echo "$input_ip"
-    fi
-}
-
-validate_port() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
-
 check_port_safety() {
     local port=$1
     if $YQ_BIN ".services[].addr" "$CONFIG_FILE" 2>/dev/null | grep -q ":$port"; then
         echo -e "  ${RED}✖ Port $port is already configured!${NC}"; return 1
     fi
-    if lsof -i :$port > /dev/null; then
+    if lsof -i :"$port" > /dev/null 2>&1; then
         echo -e "  ${RED}✖ Port $port is busy in system!${NC}"; return 1
     fi
     return 0
@@ -231,13 +289,11 @@ check_port_safety() {
 
 check_name_safety() {
     local name=$1
-    if $YQ_BIN ".services[].name" "$CONFIG_FILE" 2>/dev/null | grep -q "^$name$"; then
+    if $YQ_BIN ".services[].name" "$CONFIG_FILE" 2>/dev/null | tr -d '"' | grep -Fxq "$name"; then
         echo -e "  ${RED}✖ Name '$name' already exists!${NC}"; return 1
     fi
     return 0
 }
-
-backup_config() { cp "$CONFIG_FILE" "${CONFIG_FILE}.bak" 2>/dev/null; }
 
 apply_config() {
     echo -e "\n${BLUE}--- Reloading Service ---${NC}"
@@ -245,16 +301,25 @@ apply_config() {
     sleep 1
     if systemctl is-active --quiet gost; then
         echo -e "  ${HI_GREEN}✔ Success! Service is running.${NC}"
-        read -p "  Press Enter to continue..."
+        read -r -p "  Press Enter to continue..."
     else
         echo -e "  ${RED}✖ Failed! Restoring backup...${NC}"
         [ -f "${CONFIG_FILE}.bak" ] && mv "${CONFIG_FILE}.bak" "$CONFIG_FILE" && systemctl restart gost
         journalctl -u gost -n 5 --no-pager
-        read -p "  Press Enter..."
+        read -r -p "  Press Enter..."
     fi
+    # Refresh dashboard counters quickly after changes
+    LAST_STATS_TS=0
 }
 
+# ==================================================
+#  SYSTEMD SERVICE (v9.3 defaults)
+#   - Silent Output (stdout off) + Errors in journald
+#   - GOGC=100 (Optimized for performance)
+# ==================================================
+
 create_service() {
+    local GOST_BIN
     GOST_BIN=$(command -v gost)
     cat <<EOF > "$SERVICE_FILE"
 [Unit]
@@ -264,13 +329,14 @@ After=network.target
 [Service]
 Type=simple
 User=root
-# Performance Tuning
-Environment="GOGC=20"
+# Performance Tuning: GOGC=100 is best for 4GB+ RAM servers
+Environment="GOGC=100"
 ExecStart=$GOST_BIN -C $CONFIG_FILE
-# --- LOGS DISABLED TO PROTECT DISK ---
+
+# Default: Silent + Errors Only (tiny disk + minimum debug)
 StandardOutput=null
-StandardError=null
-# -------------------------------------
+StandardError=journal
+
 Restart=always
 RestartSec=3
 LimitNOFILE=1048576
@@ -283,37 +349,63 @@ EOF
     systemctl enable gost >/dev/null 2>&1
 }
 
-ask_input() { echo -ne "  ${HI_PINK}➤ $1 : ${NC}"; }
-section_title() { echo -e "\n  ${BOLD}${HI_CYAN}:: $1 ::${NC}"; }
-info_msg() { echo -e "  ${YELLOW}ℹ${NC} ${BLUE}$1${NC}"; }
-
 # ==================================================
-#  AUTO OPTIMIZATION FUNCTIONS
+#  AUTO LOG OPTIMIZATION (startup)
+#   - MUST run journald limit + vacuum
+#   - NO syslog truncate here (only in logs menu)
 # ==================================================
 
 auto_clean_logs() {
-    # 1. Set Journald Limits (Max 50MB)
+    # Logical defaults for tiny disks: keep some history but not blow up disk.
+    local MAX_USE="120M"
+    local KEEP_FREE="200M"
+    local MAX_FILE="20M"
+
     mkdir -p /etc/systemd/journald.conf.d
     cat <<EOF > /etc/systemd/journald.conf.d/99-gost-manager.conf
 [Journal]
-SystemMaxUse=50M
-SystemKeepFree=100M
-SystemMaxFileSize=10M
+SystemMaxUse=$MAX_USE
+SystemKeepFree=$KEEP_FREE
+SystemMaxFileSize=$MAX_FILE
+RateLimitIntervalSec=30s
+RateLimitBurst=1000
 EOF
+
     systemctl restart systemd-journald >/dev/null 2>&1
-
-    # 2. Vacuum Journal by Size
-    journalctl --vacuum-size=50M >/dev/null 2>&1
-
-    # 3. Truncate Syslog (Immediate)
-    truncate -s 0 /var/log/syslog 2>/dev/null
-    
-    echo -e "  ${HI_GREEN}✔ Storage Shield Activated: Logs restricted to 50MB.${NC}"
-    sleep 1
+    journalctl --vacuum-size="$MAX_USE" >/dev/null 2>&1
 }
 
 # ==================================================
-#  CORE FUNCTIONS (v9.1)
+#  DEBUG TOGGLE (robust)
+# ==================================================
+
+toggle_debug_mode() {
+    echo ""
+    if grep -q "^StandardOutput=null" "$SERVICE_FILE" 2>/dev/null; then
+        # Enable Debug (full logs)
+        sed -i 's/^StandardOutput=null/StandardOutput=journal/' "$SERVICE_FILE"
+        # Keep stderr to journal (already)
+        if ! grep -q "^StandardError=journal" "$SERVICE_FILE"; then
+            echo "StandardError=journal" >> "$SERVICE_FILE"
+        fi
+        systemctl daemon-reload
+        systemctl restart gost
+        echo -e "  ${YELLOW}⚠ DEBUG MODE ENABLED.${NC} ${BLUE}Full logs are now active.${NC}"
+    else
+        # Disable Debug (silent + errors)
+        sed -i 's/^StandardOutput=journal/StandardOutput=null/' "$SERVICE_FILE"
+        if ! grep -q "^StandardError=journal" "$SERVICE_FILE"; then
+            echo "StandardError=journal" >> "$SERVICE_FILE"
+        fi
+        systemctl daemon-reload
+        systemctl restart gost
+        echo -e "  ${HI_GREEN}✔ SILENT MODE ENABLED.${NC} ${BLUE}Errors-only logging active.${NC}"
+    fi
+    sleep 2
+}
+
+# ==================================================
+#  CORE FUNCTIONS (v9.3)
 # ==================================================
 
 add_tunnel() {
@@ -321,18 +413,22 @@ add_tunnel() {
     section_title "ADD DIRECT TUNNEL"
     show_guide "Direct Tunnel & mTCP" \
     "Use this for simple forwarding (Relay).\n  ${BOLD}[1-2] TCP/UDP:${NC} Standard forwarding.\n  ${BOLD}[3] mTCP:${NC} (Turbo) Sends multiple requests in one connection."
-    
+
     show_warning
     echo ""
-    ask_input "Service Name"; read s_name
-    check_name_safety "$s_name" || { sleep 2; return; }
-    ask_input "Local Port"; read lport
-    validate_port "$lport" || { echo "Bad Port"; sleep 2; return; }
-    check_port_safety "$lport" || { sleep 2; return; }
+    ask_input "Service Name"; read -r s_name
+    check_name_safety "$s_name" || { sleep 1; return; }
+
+    ask_input "Local Port"; read -r lport
+    validate_port "$lport" || { echo -e "  ${RED}Bad Port${NC}"; sleep 1; return; }
+    check_port_safety "$lport" || { sleep 1; return; }
+
     echo ""
-    ask_input "Dest IP"; read raw_ip
+    ask_input "Dest IP"; read -r raw_ip
     dip=$(normalize_ip "$raw_ip")
-    ask_input "Dest Port"; read dport
+    ask_input "Dest Port"; read -r dport
+    validate_port "$dport" || { echo -e "  ${RED}Bad Dest Port${NC}"; sleep 1; return; }
+
     echo ""
     echo -e "  ${BOLD}Protocol Selection:${NC}"
     echo -e "  ${HI_CYAN}[1]${NC} TCP Only"
@@ -340,16 +436,16 @@ add_tunnel() {
     echo -e "  ${HI_CYAN}[3]${NC} mTCP ${HI_PINK}(Turbo Multiplex)${NC}"
     echo -e "  ${HI_CYAN}[4]${NC} Dual Stack ${HI_GREEN}(TCP+UDP)${NC}"
     echo ""
-    ask_input "Select"; read proto
+    ask_input "Select"; read -r proto
+
     backup_config
-    
     node_tcp="{\"addr\": \"$dip:$dport\"}"
     node_udp="{\"addr\": \"$dip:$dport\"}"
-    
+
     if [[ "$proto" == "3" ]]; then
         $YQ_BIN -i ".services += [{\"name\": \"$s_name-mtcp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"listener\": {\"type\": \"mtcp\"}, \"forwarder\": {\"nodes\": [$node_tcp]}}]" "$CONFIG_FILE"
     fi
-    
+
     if [[ "$proto" == "1" || "$proto" == "4" ]]; then
         $YQ_BIN -i ".services += [{\"name\": \"$s_name-tcp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"listener\": {\"type\": \"tcp\"}, \"forwarder\": {\"nodes\": [$node_tcp]}}]" "$CONFIG_FILE"
     fi
@@ -368,22 +464,25 @@ add_secure() {
     echo -e "  ${HI_CYAN}[1]${NC} Sender / Client   ${BLUE}(Iran Server)${NC}"
     echo -e "  ${HI_CYAN}[2]${NC} Receiver / Server ${BLUE}(Foreign Server)${NC}"
     echo ""
-    ask_input "Select Role"; read side
-    
+    ask_input "Select Role"; read -r side
+
     if [[ "$side" == "1" ]]; then
         section_title "SENDER CONFIGURATION"
         show_warning
         echo ""
-        ask_input "Service Name"; read s_name
-        check_name_safety "$s_name" || { sleep 2; return; }
-        ask_input "Local Port"; read lport
-        check_port_safety "$lport" || { sleep 2; return; }
+        ask_input "Service Name"; read -r s_name
+        check_name_safety "$s_name" || { sleep 1; return; }
+        ask_input "Local Port"; read -r lport
+        validate_port "$lport" || { echo -e "  ${RED}Bad Port${NC}"; sleep 1; return; }
+        check_port_safety "$lport" || { sleep 1; return; }
+
         echo ""
-        ask_input "Remote IP"; read raw_rip
+        ask_input "Remote IP"; read -r raw_rip
         rip=$(normalize_ip "$raw_rip")
-        ask_input "Remote Port"; read rport
-        
-        ask_input "SNI Domain (Optional)"; read sni
+        ask_input "Remote Port"; read -r rport
+        validate_port "$rport" || { echo -e "  ${RED}Bad Remote Port${NC}"; sleep 1; return; }
+
+        ask_input "SNI Domain (Optional)"; read -r sni
         [[ -z "$sni" ]] && sni="google.com"
 
         echo -e "\n  ${BOLD}Protocol:${NC}"
@@ -395,10 +494,16 @@ add_secure() {
         echo -e "  ${HI_CYAN}[6]${NC} KCP  ${YELLOW}(Anti-Loss)${NC}"
         echo -e "  ${HI_CYAN}[7]${NC} Shadowsocks"
         echo ""
-        ask_input "Select"; read t_opt
-        
-        case $t_opt in 
-            2) tr="mwss";; 3) tr="grpc";; 4) tr="quic";; 5) tr="h2";; 6) tr="kcp";; 7) tr="ss";; *) tr="wss";; 
+        ask_input "Select"; read -r t_opt
+
+        case $t_opt in
+            2) tr="mwss";;
+            3) tr="grpc";;
+            4) tr="quic";;
+            5) tr="h2";;
+            6) tr="kcp";;
+            7) tr="ss";;
+            *) tr="wss";;
         esac
 
         extra_meta=""
@@ -407,35 +512,40 @@ add_secure() {
             echo -e "  ${HI_CYAN}[1]${NC} AES-256-GCM"
             echo -e "  ${HI_CYAN}[2]${NC} Chacha20-IETF-Poly1305"
             echo -e "  ${HI_CYAN}[3]${NC} None"
-            ask_input "Select"; read c_opt
-            case $c_opt in 2) cipher="chacha20-ietf-poly1305";; 3) cipher="none";; *) cipher="aes-256-gcm";; esac
-            
-            ask_input "Password"; read ss_pass
+            ask_input "Select"; read -r c_opt
+            case $c_opt in
+                2) cipher="chacha20-ietf-poly1305";;
+                3) cipher="none";;
+                *) cipher="aes-256-gcm";;
+            esac
+
+            ask_input "Password"; read -r ss_pass
             extra_meta=", \"metadata\": {\"method\": \"$cipher\", \"password\": \"$ss_pass\"}"
         fi
 
         backup_config
-        
+
         if [[ "$tr" == "ss" ]]; then
-             FWD_JSON="{\"nodes\": [{\"addr\": \"$rip:$rport\", \"connector\": {\"type\": \"shadowsocks\"$extra_meta}, \"dialer\": {\"type\": \"tcp\"}}]}"
+            FWD_JSON="{\"nodes\": [{\"addr\": \"$rip:$rport\", \"connector\": {\"type\": \"shadowsocks\"$extra_meta}, \"dialer\": {\"type\": \"tcp\"}}]}"
         else
-             FWD_JSON="{\"nodes\": [{\"addr\": \"$rip:$rport\", \"connector\": {\"type\": \"relay\"}, \"dialer\": {\"type\": \"$tr\", \"tls\": {\"secure\": false, \"serverName\": \"$sni\"}}}]}"
+            FWD_JSON="{\"nodes\": [{\"addr\": \"$rip:$rport\", \"connector\": {\"type\": \"relay\"}, \"dialer\": {\"type\": \"$tr\", \"tls\": {\"secure\": false, \"serverName\": \"$sni\"}}}]}"
         fi
 
         $YQ_BIN -i ".services += [{\"name\": \"$s_name-dual\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"listener\": {\"type\": \"tcp\"}, \"forwarder\": $FWD_JSON}]" "$CONFIG_FILE"
         $YQ_BIN -i ".services += [{\"name\": \"$s_name-udp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"udp\"}, \"listener\": {\"type\": \"udp\"}, \"forwarder\": $FWD_JSON}]" "$CONFIG_FILE"
-        
+
         apply_config
 
     elif [[ "$side" == "2" ]]; then
         section_title "RECEIVER CONFIGURATION"
         show_warning
         echo ""
-        ask_input "Service Name"; read s_name
-        check_name_safety "$s_name" || { sleep 2; return; }
-        ask_input "Secure Port"; read lport
-        check_port_safety "$lport" || { sleep 2; return; }
-        
+        ask_input "Service Name"; read -r s_name
+        check_name_safety "$s_name" || { sleep 1; return; }
+        ask_input "Secure Port"; read -r lport
+        validate_port "$lport" || { echo -e "  ${RED}Bad Port${NC}"; sleep 1; return; }
+        check_port_safety "$lport" || { sleep 1; return; }
+
         echo -e "\n  ${BOLD}Protocol:${NC}"
         echo -e "  ${HI_CYAN}[1]${NC} WSS"
         echo -e "  ${HI_CYAN}[2]${NC} mWSS ${HI_PINK}(Turbo)${NC}"
@@ -445,9 +555,15 @@ add_secure() {
         echo -e "  ${HI_CYAN}[6]${NC} KCP"
         echo -e "  ${HI_CYAN}[7]${NC} Shadowsocks"
         echo ""
-        ask_input "Select"; read t_opt
-        case $t_opt in 
-            2) tr="mwss";; 3) tr="grpc";; 4) tr="quic";; 5) tr="h2";; 6) tr="kcp";; 7) tr="ss";; *) tr="wss";; 
+        ask_input "Select"; read -r t_opt
+        case $t_opt in
+            2) tr="mwss";;
+            3) tr="grpc";;
+            4) tr="quic";;
+            5) tr="h2";;
+            6) tr="kcp";;
+            7) tr="ss";;
+            *) tr="wss";;
         esac
 
         if [[ "$tr" == "ss" ]]; then
@@ -455,39 +571,44 @@ add_secure() {
             echo -e "  ${HI_CYAN}[1]${NC} AES-256-GCM"
             echo -e "  ${HI_CYAN}[2]${NC} Chacha20-IETF-Poly1305"
             echo -e "  ${HI_CYAN}[3]${NC} None"
-            ask_input "Select"; read c_opt
-            case $c_opt in 2) cipher="chacha20-ietf-poly1305";; 3) cipher="none";; *) cipher="aes-256-gcm";; esac
-            
-            ask_input "Password"; read ss_pass
+            ask_input "Select"; read -r c_opt
+            case $c_opt in
+                2) cipher="chacha20-ietf-poly1305";;
+                3) cipher="none";;
+                *) cipher="aes-256-gcm";;
+            esac
+            ask_input "Password"; read -r ss_pass
             tr="shadowsocks"
         else
             echo ""
-            ask_input "Forward IP"; read raw_tip
+            ask_input "Forward IP"; read -r raw_tip
             tip=$(normalize_ip "$raw_tip")
-            ask_input "Forward Port"; read tport
-            
-            ask_input "Cert Domain"; read cert_cn
+            ask_input "Forward Port"; read -r tport
+            validate_port "$tport" || { echo -e "  ${RED}Bad Forward Port${NC}"; sleep 1; return; }
+
+            ask_input "Cert Domain"; read -r cert_cn
             [[ -z "$cert_cn" ]] && cert_cn="update.microsoft.com"
-            
-            local c_path="$CERT_DIR/cert_${lport}.pem"
-            local k_path="$CERT_DIR/key_${lport}.pem"
+
+            c_path="$CERT_DIR/cert_${lport}.pem"
+            k_path="$CERT_DIR/key_${lport}.pem"
             echo -e "  ${BLUE}Generating Certificates...${NC}"
             openssl req -newkey rsa:2048 -nodes -keyout "$k_path" -x509 -days 3650 -out "$c_path" -subj "/CN=$cert_cn" > /dev/null 2>&1
             chmod 600 "$k_path"
         fi
 
         backup_config
-        
+
         if [[ "$tr" == "shadowsocks" ]]; then
-             ask_input "Forward IP"; read raw_tip
-             tip=$(normalize_ip "$raw_tip")
-             ask_input "Forward Port"; read tport
-             
-             s_name="$s_name" lport=":$lport" taddr="$tip:$tport" pass="$ss_pass" cipher="$cipher" \
-             $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": "shadowsocks", "metadata": {"password": env(pass), "method": env(cipher)}}, "listener": {"type": "tcp"}, "forwarder": {"nodes": [{"addr": env(taddr)}]}}]' "$CONFIG_FILE"
+            ask_input "Forward IP"; read -r raw_tip
+            tip=$(normalize_ip "$raw_tip")
+            ask_input "Forward Port"; read -r tport
+            validate_port "$tport" || { echo -e "  ${RED}Bad Forward Port${NC}"; sleep 1; return; }
+
+            s_name="$s_name" lport=":$lport" taddr="$tip:$tport" pass="$ss_pass" cipher="$cipher" \
+            $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": "shadowsocks", "metadata": {"password": env(pass), "method": env(cipher)}}, "listener": {"type": "tcp"}, "forwarder": {"nodes": [{"addr": env(taddr)}]}}]' "$CONFIG_FILE"
         else
-             s_name="$s_name" lport=":$lport" tr="$tr" taddr="$tip:$tport" cert="$c_path" key="$k_path" \
-             $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": "relay"}, "listener": {"type": env(tr), "tls": {"certFile": env(cert), "keyFile": env(key)}}, "forwarder": {"nodes": [{"addr": env(taddr)}]}}]' "$CONFIG_FILE"
+            s_name="$s_name" lport=":$lport" tr="$tr" taddr="$tip:$tport" cert="$c_path" key="$k_path" \
+            $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": "relay"}, "listener": {"type": env(tr), "tls": {"certFile": env(cert), "keyFile": env(key)}}, "forwarder": {"nodes": [{"addr": env(taddr)}]}}]' "$CONFIG_FILE"
         fi
         apply_config
     fi
@@ -498,38 +619,45 @@ add_lb() {
     section_title "ADD LOAD BALANCER"
     info_msg "Distribute traffic between multiple servers."
     echo ""
-    ask_input "Service Name"; read s_name
-    check_name_safety "$s_name" || { sleep 2; return; }
-    ask_input "Local Port"; read lport
-    check_port_safety "$lport" || { sleep 2; return; }
+    ask_input "Service Name"; read -r s_name
+    check_name_safety "$s_name" || { sleep 1; return; }
+    ask_input "Local Port"; read -r lport
+    validate_port "$lport" || { echo -e "  ${RED}Bad Port${NC}"; sleep 1; return; }
+    check_port_safety "$lport" || { sleep 1; return; }
+
     echo -e "\n  ${BOLD}Strategy:${NC}"
     echo -e "  ${HI_CYAN}[1]${NC} Round Robin   ${BLUE}Rotate IPs${NC}"
     echo -e "  ${HI_CYAN}[2]${NC} Random        ${BLUE}Random pick${NC}"
     echo -e "  ${HI_CYAN}[3]${NC} Least Conn    ${BLUE}Smart load${NC}"
     echo -e "  ${HI_CYAN}[4]${NC} Hashing       ${BLUE}Sticky IP${NC}"
     echo ""
-    ask_input "Select"; read s_opt
+    ask_input "Select"; read -r s_opt
     case $s_opt in 2) strat="random";; 3) strat="least";; 4) strat="hashing";; *) strat="round";; esac
+
     echo -e "\n  ${BOLD}Protocol:${NC}"
     echo -e "  ${HI_CYAN}[1]${NC} TCP Only"
     echo -e "  ${HI_CYAN}[2]${NC} UDP Only"
     echo -e "  ${HI_CYAN}[3]${NC} Dual Stack"
     echo ""
-    ask_input "Select"; read proto
+    ask_input "Select"; read -r proto
+
     declare -a NODES
     section_title "Manage Nodes"
     info_msg "Leave IP empty and press ENTER to finish."
     while true; do
         echo ""
-        ask_input "Node IP"; read raw_nip
+        ask_input "Node IP"; read -r raw_nip
         [[ -z "$raw_nip" ]] && break
         nip=$(normalize_ip "$raw_nip")
-        ask_input "Node Port"; read nport
+        ask_input "Node Port"; read -r nport
+        validate_port "$nport" || { echo -e "  ${RED}Bad Node Port${NC}"; continue; }
         NODES+=("{\"addr\": \"$nip:$nport\"}")
         echo -e "    ${HI_GREEN}✔ Added${NC}"
     done
-    if [ ${#NODES[@]} -eq 0 ]; then echo "No nodes!"; sleep 2; return; fi
+
+    if [ ${#NODES[@]} -eq 0 ]; then echo -e "  ${RED}No nodes!${NC}"; sleep 1; return; fi
     NODES_STR=$(IFS=, ; echo "${NODES[*]}")
+
     backup_config
     if [[ "$proto" == "1" || "$proto" == "3" ]]; then
         $YQ_BIN -i ".services += [{\"name\": \"$s_name-tcp\", \"addr\": \":$lport\", \"handler\": {\"type\": \"tcp\"}, \"listener\": {\"type\": \"tcp\"}, \"forwarder\": {\"selector\": {\"strategy\": \"$strat\", \"maxFails\": 3, \"failTimeout\": \"30s\"}, \"nodes\": [$NODES_STR]}}]" "$CONFIG_FILE"
@@ -545,29 +673,30 @@ add_simple_proxy() {
     section_title "SIMPLE PROXY SERVER"
     show_guide "Proxy Mode" \
     "Turns this server into a direct proxy.\n  ${BOLD}SOCKS5 / HTTP:${NC} Use these in Telegram, Browser, or Apps.\n  ${BOLD}Auth:${NC} Set Username/Password for security."
-    
+
     show_warning
     echo ""
-    ask_input "Service Name"; read s_name
-    check_name_safety "$s_name" || { sleep 2; return; }
-    ask_input "Port"; read lport
-    check_port_safety "$lport" || { sleep 2; return; }
-    
+    ask_input "Service Name"; read -r s_name
+    check_name_safety "$s_name" || { sleep 1; return; }
+    ask_input "Port"; read -r lport
+    validate_port "$lport" || { echo -e "  ${RED}Bad Port${NC}"; sleep 1; return; }
+    check_port_safety "$lport" || { sleep 1; return; }
+
     echo -e "\n  ${BOLD}Type:${NC}"
     echo -e "  ${HI_CYAN}[1]${NC} SOCKS5"
     echo -e "  ${HI_CYAN}[2]${NC} HTTP"
-    ask_input "Select"; read p_opt
-    
-    ask_input "Username (Leave empty for none)"; read p_user
+    ask_input "Select"; read -r p_opt
+
+    ask_input "Username (Leave empty for none)"; read -r p_user
     if [[ -n "$p_user" ]]; then
-        ask_input "Password"; read p_pass
+        ask_input "Password"; read -r p_pass
     fi
-    
+
     backup_config
     if [[ "$p_opt" == "2" ]]; then handler="http"; else handler="socks5"; fi
-    
+
     s_name="$s_name" lport=":$lport" handler="$handler" p_user="$p_user" p_pass="$p_pass"
-    
+
     if [[ -n "$p_user" ]]; then
          $YQ_BIN -i '.services += [{"name": env(s_name), "addr": env(lport), "handler": {"type": env(handler), "auth": {"username": env(p_user), "password": env(p_pass)}}, "listener": {"type": "tcp"}}]' "$CONFIG_FILE"
     else
@@ -580,46 +709,50 @@ setup_dns() {
     draw_dashboard
     section_title "SECURE DNS SERVER"
     show_guide "Secure DNS (DoH)" \
-    "Sets up a DNS resolver on your server.\n  ${BOLD}Prevent Leaks:${NC} Forwards DNS queries securely to Cloudflare/Google.\n  ${BOLD}Protocol:${NC} Listens on UDP/TCP 53 (Standard)."
-    
-    ask_input "Service Name"; read s_name
-    check_name_safety "$s_name" || { sleep 2; return; }
-    ask_input "Local Port (Default 53)"; read lport
+    "Sets up a DNS resolver on your server.\n  ${BOLD}Prevent Leaks:${NC} Forwards DNS queries securely.\n  ${BOLD}Protocol:${NC} Listens on UDP 53 (or custom port)."
+
+    ask_input "Service Name"; read -r s_name
+    check_name_safety "$s_name" || { sleep 1; return; }
+    ask_input "Local Port (Default 53)"; read -r lport
     [[ -z "$lport" ]] && lport="53"
-    check_port_safety "$lport" || { sleep 2; return; }
-    
+    validate_port "$lport" || { echo -e "  ${RED}Bad Port${NC}"; sleep 1; return; }
+    check_port_safety "$lport" || { sleep 1; return; }
+
     echo -e "\n  ${BOLD}Upstream Provider:${NC}"
     echo -e "  ${HI_CYAN}[1]${NC} Cloudflare (1.1.1.1)"
     echo -e "  ${HI_CYAN}[2]${NC} Google (8.8.8.8)"
     echo -e "  ${HI_CYAN}[3]${NC} Custom"
-    ask_input "Select"; read d_opt
-    
+    ask_input "Select"; read -r d_opt
+
     case $d_opt in
         1) up_dns="1.1.1.1";;
         2) up_dns="8.8.8.8";;
-        *) ask_input "Enter DNS IP"; read up_dns;;
+        *) ask_input "Enter DNS IP"; read -r up_dns;;
     esac
-    
+
     backup_config
     $YQ_BIN -i ".services += [{\"name\": \"$s_name\", \"addr\": \":$lport\", \"handler\": {\"type\": \"dns\"}, \"listener\": {\"type\": \"udp\"}, \"forwarder\": {\"nodes\": [{\"addr\": \"$up_dns:53\"}]}}]" "$CONFIG_FILE"
-    
     apply_config
 }
 
 delete_service() {
     draw_dashboard
     section_title "DELETE SERVICE"
-    count=$($YQ_BIN '.services | length' "$CONFIG_FILE")
-    if [[ "$count" == "0" ]]; then echo "No services configured."; sleep 2; return; fi
+    local count
+    count=$($YQ_BIN '.services | length' "$CONFIG_FILE" 2>/dev/null)
+    [[ -z "$count" ]] && count=0
+    if [[ "$count" == "0" ]]; then echo -e "  ${YELLOW}No services configured.${NC}"; sleep 1; return; fi
+
     printf "  ${BLUE}%-4s %-25s %-15s${NC}\n" "ID" "NAME" "PORT"
     echo -e "  ${BLUE}────────────────────────────────────────────${NC}"
-    for ((i=0; i<$count; i++)); do
-        s_name=$($YQ_BIN ".services[$i].name" "$CONFIG_FILE" | tr -d '"')
-        s_port=$($YQ_BIN ".services[$i].addr" "$CONFIG_FILE" | tr -d '"')
+    for ((i=0; i<count; i++)); do
+        s_name=$($YQ_BIN ".services[$i].name" "$CONFIG_FILE" 2>/dev/null | tr -d '"')
+        s_port=$($YQ_BIN ".services[$i].addr" "$CONFIG_FILE" 2>/dev/null | tr -d '"')
         printf "  ${HI_CYAN}[%d]${NC}  ${BOLD}%-25s${NC} %-15s\n" "$i" "$s_name" "$s_port"
     done
     echo ""
-    ask_input "Enter ID (c to cancel)"; read del_id
+    ask_input "Enter ID (c to cancel)"; read -r del_id
+    [[ "$del_id" == "c" || "$del_id" == "C" ]] && return
     if [[ "$del_id" =~ ^[0-9]+$ ]] && [ "$del_id" -lt "$count" ]; then
         backup_config
         $YQ_BIN -i "del(.services[$del_id])" "$CONFIG_FILE"
@@ -627,51 +760,79 @@ delete_service() {
     fi
 }
 
+# ==================================================
+#  LIGHTWEIGHT WATCHDOG (no top/bc)
+#   - Uses /proc/loadavg (very low CPU)
+# ==================================================
+
 setup_watchdog() {
     draw_dashboard
-    section_title "CPU OVERLOAD WATCHDOG"
-    info_msg "Automatically restarts Gost if CPU usage hits High Load."
+    section_title "LIGHT WATCHDOG (LOAD AVG)"
+    info_msg "Restarts Gost if 1-min load average stays too high. Very low CPU overhead."
     echo ""
-    echo -e "  ${YELLOW}This will create a background job checking CPU every minute.${NC}"
-    echo ""
-    
-    ask_input "Enable Watchdog? (y/n)"; read confirm
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then return; fi
-    
-    # Create the watchdog script
-    cat <<EOF > /usr/local/bin/gost_watchdog.sh
+
+    local cores
+    cores=$(nproc 2>/dev/null)
+    [[ -z "$cores" || "$cores" -le 0 ]] && cores=1
+    local default_threshold=$((cores * 2))
+
+    echo -e "  ${YELLOW}Default threshold = cores*2 => ${default_threshold}${NC}"
+    ask_input "Enable Watchdog? (y/yes)"; read -r confirm
+    confirm=${confirm:-y}
+    if ! confirm_yes "$confirm"; then return; fi
+
+    ask_input "Load threshold (ENTER for ${default_threshold})"; read -r thr
+    [[ -z "$thr" ]] && thr="$default_threshold"
+    [[ ! "$thr" =~ ^[0-9]+$ ]] && thr="$default_threshold"
+
+    cat <<'EOF' > /usr/local/bin/gost_watchdog.sh
 #!/bin/bash
-CPU_IDLE=\$(top -bn2 -d 0.5 | grep "Cpu(s)" | tail -n 1 | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print \$1}')
-CPU_USAGE=\$(echo "100 - \$CPU_IDLE" | bc -l 2>/dev/null | cut -d. -f1)
-CPU_USAGE=\${CPU_USAGE:-0}
-if [ "\$CPU_USAGE" -ge 95 ]; then
-    systemctl restart gost
-    echo "\$(date): CPU Critical (\$CPU_USAGE%). Gost Service Restarted." >> /var/log/gost_watchdog.log
+# Lightweight watchdog based on /proc/loadavg (1-min avg)
+THRESHOLD_FILE="/etc/gost/watchdog_threshold"
+LOG="/var/log/gost_watchdog.log"
+
+thr=0
+if [ -f "$THRESHOLD_FILE" ]; then
+  thr=$(cat "$THRESHOLD_FILE" 2>/dev/null | tr -dc '0-9')
+fi
+[ -z "$thr" ] && thr=4
+
+load1=$(awk '{print int($1)}' /proc/loadavg 2>/dev/null)
+[ -z "$load1" ] && load1=0
+
+if [ "$load1" -ge "$thr" ]; then
+  systemctl restart gost
+  echo "$(date): Load Critical (${load1} >= ${thr}). Gost restarted." >> "$LOG"
 fi
 EOF
     chmod +x /usr/local/bin/gost_watchdog.sh
-    
-    if ! command -v bc &> /dev/null; then apt-get install -y bc > /dev/null 2>&1; fi
+
+    mkdir -p /etc/gost
+    echo "$thr" > /etc/gost/watchdog_threshold
+
+    # Install cron entry (dedupe)
     (crontab -l 2>/dev/null; echo "* * * * * /usr/local/bin/gost_watchdog.sh") | sort -u | crontab -
-    
-    echo -e "\n  ${HI_GREEN}✔ Watchdog Activated successfully.${NC}"
+
+    echo -e "\n  ${HI_GREEN}✔ Watchdog Activated.${NC} Threshold=${thr} (1-min load)"
     sleep 2
 }
 
 menu_uninstall() {
     draw_dashboard
     section_title "UNINSTALL MANAGER"
-    echo -e "  ${RED}⚠ WARNING: This will remove Gost, all configs, and this script!${NC}"
+    echo -e "  ${RED}⚠ WARNING: This will remove Gost, configs, yq, watchdog, and shortcut!${NC}"
     echo ""
-    ask_input "Are you sure? (type 'yes' to confirm)"; read c
-    if [[ "$c" == "yes" ]]; then
-        systemctl stop gost; systemctl disable gost
+    ask_input "Confirm (y/yes)"; read -r c
+    if confirm_yes "$c"; then
+        systemctl stop gost >/dev/null 2>&1
+        systemctl disable gost >/dev/null 2>&1
         rm -f /usr/local/bin/gost_watchdog.sh
-        crontab -l | grep -v "gost_watchdog.sh" | crontab -
+        crontab -l 2>/dev/null | grep -v "gost_watchdog.sh" | crontab - 2>/dev/null
         rm -rf "$CONFIG_DIR" "$SERVICE_FILE" "$YQ_BIN" "$SHORTCUT_BIN"
         systemctl daemon-reload
-        rm -f "$(command -v gost)"
-        echo -e "\n  ${HI_GREEN}✔ Uninstalled successfully.${NC}"; exit 0
+        rm -f "$(command -v gost)" 2>/dev/null
+        echo -e "\n  ${HI_GREEN}✔ Uninstalled successfully.${NC}"
+        exit 0
     fi
 }
 
@@ -682,24 +843,44 @@ menu_exit() {
 }
 
 # ==================================================
+#  LOGS MENU
+#   - Syslog truncate ONLY here (with confirmation)
+# ==================================================
 
 logs_menu() {
     while true; do
         draw_dashboard
         section_title "LOGS & DISK CONTROL"
-        info_msg "Manage /var/log/journal and /var/log/syslog growth."
+        info_msg "Tiny disk mode: journald is limited + you can toggle debug."
         echo ""
+        # --- FIXED GUIDE SECTION START ---
+        echo -e "  ${HI_PINK}╔══════════════════════════════════════════════════════════╗${NC}"
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}GUIDE:${NC} ${BOLD}Logs Menu Options${NC}"
+        echo -e "  ${HI_PINK}╠══════════════════════════════════════════════════════════╝${NC}"
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[1] Live Logs:${NC} Watch logs in real-time (Ctrl+C to exit)."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[2] Disk Usage:${NC} Show how much space logs are taking."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[3] Vacuum Size:${NC} Reduce logs to specific size (e.g. 100M)."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[4] Vacuum Time:${NC} Delete logs older than X (e.g. 7d)."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[5] Set Limits:${NC} Set permanent log size limits (Prevent full disk)."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[7] Clear Syslog:${NC} Danger! Deletes all system logs."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[9] Debug Mode:${NC} Toggle between Silent (Errors only) & Full logs."
+        echo -e "  ${HI_PINK}╚══════════════════════════════════════════════════════════${NC}"
+        echo ""
+        # --- FIXED GUIDE SECTION END ---
+
         echo -e "  ${HI_CYAN}[1]${NC} Follow Gost Logs (Live)"
         echo -e "  ${HI_CYAN}[2]${NC} Journal Disk Usage"
         echo -e "  ${HI_CYAN}[3]${NC} Vacuum Journal by Size"
         echo -e "  ${HI_CYAN}[4]${NC} Vacuum Journal by Time"
         echo -e "  ${HI_CYAN}[5]${NC} Set Journald Limits (Persistent)"
         echo -e "  ${HI_CYAN}[6]${NC} Force Logrotate (syslog)"
-        echo -e "  ${HI_CYAN}[7]${NC} Truncate /var/log/syslog (Immediate)"
+        echo -e "  ${HI_CYAN}[7]${NC} Truncate /var/log/syslog (Manual)"
+        echo -e "  ${HI_CYAN}[8]${NC} Check Service Status"
+        echo -e "  ${HI_CYAN}[9]${NC} Toggle Debug Mode (ON/OFF)"
         echo -e "  ${HI_CYAN}[0]${NC} Back"
         echo ""
         draw_line
-        ask_input "Select"; read lopt
+        ask_input "Select"; read -r lopt
 
         case $lopt in
             1)
@@ -711,40 +892,40 @@ logs_menu() {
                 echo ""
                 journalctl --disk-usage
                 echo ""
-                read -p "  Press Enter to continue..."
+                read -r -p "  Press Enter to continue..."
                 ;;
             3)
                 echo ""
-                ask_input "Vacuum Size (e.g. 200M)"; read vsize
+                ask_input "Vacuum Size (e.g. 200M)"; read -r vsize
                 [[ -z "$vsize" ]] && vsize="200M"
                 echo -e "${BLUE}--- Vacuuming journal to size: $vsize ---${NC}"
                 journalctl --vacuum-size="$vsize"
                 echo ""
                 journalctl --disk-usage
                 echo ""
-                read -p "  Press Enter to continue..."
+                read -r -p "  Press Enter to continue..."
                 ;;
             4)
                 echo ""
-                ask_input "Vacuum Time (e.g. 7d)"; read vtime
+                ask_input "Vacuum Time (e.g. 7d)"; read -r vtime
                 [[ -z "$vtime" ]] && vtime="7d"
                 echo -e "${BLUE}--- Vacuuming journal older than: $vtime ---${NC}"
                 journalctl --vacuum-time="$vtime"
                 echo ""
                 journalctl --disk-usage
                 echo ""
-                read -p "  Press Enter to continue..."
+                read -r -p "  Press Enter to continue..."
                 ;;
             5)
                 echo ""
                 section_title "JOURNALD LIMITS"
-                info_msg "This creates: /etc/systemd/journald.conf.d/99-gost-manager.conf"
-                ask_input "SystemMaxUse (Default 300M)"; read jmax
-                [[ -z "$jmax" ]] && jmax="300M"
-                ask_input "SystemKeepFree (Default 500M)"; read jfree
-                [[ -z "$jfree" ]] && jfree="500M"
-                ask_input "SystemMaxFileSize (Default 50M)"; read jfile
-                [[ -z "$jfile" ]] && jfile="50M"
+                info_msg "Writes: /etc/systemd/journald.conf.d/99-gost-manager.conf"
+                ask_input "SystemMaxUse (Default 120M)"; read -r jmax
+                [[ -z "$jmax" ]] && jmax="120M"
+                ask_input "SystemKeepFree (Default 200M)"; read -r jfree
+                [[ -z "$jfree" ]] && jfree="200M"
+                ask_input "SystemMaxFileSize (Default 20M)"; read -r jfile
+                [[ -z "$jfile" ]] && jfile="20M"
 
                 mkdir -p /etc/systemd/journald.conf.d
                 cat <<EOF > /etc/systemd/journald.conf.d/99-gost-manager.conf
@@ -752,62 +933,75 @@ logs_menu() {
 SystemMaxUse=$jmax
 SystemKeepFree=$jfree
 SystemMaxFileSize=$jfile
+RateLimitIntervalSec=30s
+RateLimitBurst=1000
 EOF
-                systemctl restart systemd-journald
+                systemctl restart systemd-journald >/dev/null 2>&1
+                journalctl --vacuum-size="$jmax" >/dev/null 2>&1
                 echo ""
                 echo -e "  ${HI_GREEN}✔ Journald limits applied.${NC}"
                 journalctl --disk-usage
                 echo ""
-                read -p "  Press Enter to continue..."
+                read -r -p "  Press Enter to continue..."
                 ;;
             6)
                 echo ""
                 if ! command -v logrotate &> /dev/null; then
                     echo -e "  ${RED}✖ logrotate not installed.${NC}"
-                    read -p "  Press Enter..."
+                    read -r -p "  Press Enter..."
                 else
                     echo -e "${BLUE}--- Running logrotate (forced) ---${NC}"
                     logrotate -f /etc/logrotate.conf
                     echo ""
                     du -sh /var/log/syslog* 2>/dev/null | sort -h
                     echo ""
-                    read -p "  Press Enter to continue..."
+                    read -r -p "  Press Enter to continue..."
                 fi
                 ;;
             7)
                 echo ""
                 echo -e "  ${RED}⚠ WARNING:${NC} ${YELLOW}This will EMPTY /var/log/syslog now.${NC}"
-                ask_input "Type YES to confirm"; read c
-                if [[ "$c" == "YES" ]]; then
+                ask_input "Confirm (y/yes)"; read -r c
+                if confirm_yes "$c"; then
                     truncate -s 0 /var/log/syslog 2>/dev/null
                     echo -e "  ${HI_GREEN}✔ syslog truncated.${NC}"
                 else
                     echo -e "  ${YELLOW}Canceled.${NC}"
                 fi
                 echo ""
-                read -p "  Press Enter to continue..."
+                read -r -p "  Press Enter to continue..."
+                ;;
+            8)
+                echo ""
+                systemctl status gost --no-pager
+                echo ""
+                read -r -p "  Press Enter to continue..."
+                ;;
+            9)
+                toggle_debug_mode
                 ;;
             0)
                 return
                 ;;
             *)
-                sleep 0.5
+                sleep 0.3
                 ;;
         esac
     done
 }
+
 # ==================================================
 #  MAIN LOOP
 # ==================================================
 
 install_dependencies
 create_service
-auto_clean_logs   # <--- INITIAL AUTO CLEANUP
+auto_clean_logs   # MUST run at startup (journald limit + vacuum)
 setup_shortcut
 
 while true; do
     draw_dashboard
-    read opt
+    read -r opt
     case $opt in
         1) add_tunnel ;;
         2) add_secure ;;
@@ -820,6 +1014,6 @@ while true; do
         9) setup_watchdog ;;
         10) menu_uninstall ;;
         0) menu_exit ;;
-        *) sleep 0.5 ;;
+        *) sleep 0.3 ;;
     esac
 done
