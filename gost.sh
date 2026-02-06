@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==================================================
-# Gost Manager - ULTIMATE SILENT (v9.3.2)
+# Gost Manager - ULTIMATE SILENT (v9.3.3)
 # Creator: UnknownZero (MOD by request)
 # Focus:
 #  - GOGC=100 (High Performance for 4GB+ RAM)
+#  - Log Level: WARN (Fixes syslog flooding)
 #  - Detailed Logs Menu Guide
 #  - Disk tiny friendly + minimum debug
-#  - Journald limits + vacuum auto at startup
 # ==================================================
 
 # --- Colors (Safe Palette) ---
@@ -331,7 +331,9 @@ Type=simple
 User=root
 # Performance Tuning: GOGC=100 is best for 4GB+ RAM servers
 Environment="GOGC=100"
-ExecStart=$GOST_BIN -C $CONFIG_FILE
+
+# --- FIX: Set log level to WARN to stop log flooding ---
+ExecStart=$GOST_BIN -L warn -C $CONFIG_FILE
 
 # Default: Silent + Errors Only (tiny disk + minimum debug)
 StandardOutput=null
@@ -383,7 +385,10 @@ toggle_debug_mode() {
     echo ""
     if grep -q "^StandardOutput=null" "$SERVICE_FILE" 2>/dev/null; then
         # Enable Debug (full logs)
+        # Note: We must also remove -L warn to see info logs in debug mode
         sed -i 's/^StandardOutput=null/StandardOutput=journal/' "$SERVICE_FILE"
+        sed -i 's/-L warn//' "$SERVICE_FILE"
+        
         # Keep stderr to journal (already)
         if ! grep -q "^StandardError=journal" "$SERVICE_FILE"; then
             echo "StandardError=journal" >> "$SERVICE_FILE"
@@ -392,8 +397,13 @@ toggle_debug_mode() {
         systemctl restart gost
         echo -e "  ${YELLOW}⚠ DEBUG MODE ENABLED.${NC} ${BLUE}Full logs are now active.${NC}"
     else
-        # Disable Debug (silent + errors)
+        # Disable Debug (silent + errors + warn level)
         sed -i 's/^StandardOutput=journal/StandardOutput=null/' "$SERVICE_FILE"
+        # Re-add -L warn if missing
+        if ! grep -q "\-L warn" "$SERVICE_FILE"; then
+             sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/gost -L warn -C /etc/gost/config.yaml|' "$SERVICE_FILE"
+        fi
+
         if ! grep -q "^StandardError=journal" "$SERVICE_FILE"; then
             echo "StandardError=journal" >> "$SERVICE_FILE"
         fi
