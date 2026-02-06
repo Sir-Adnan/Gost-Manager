@@ -1,10 +1,28 @@
 # 🚀 Gost v3 Manager (Ultimate Silent Edition) - v9.3.4
 
 <p align="center">
-<img src="[https://img.shields.io/badge/Core-Gost_v3-00ADD8?style=for-the-badge&logo=go](https://www.google.com/search?q=https://img.shields.io/badge/Core-Gost_v3-00ADD8%3Fstyle%3Dfor-the-badge%26logo%3Dgo)">
-<img src="[https://img.shields.io/badge/Version-9.3.4-HI_PINK?style=for-the-badge](https://www.google.com/search?q=https://img.shields.io/badge/Version-9.3.4-HI_PINK%3Fstyle%3Dfor-the-badge)">
-<img src="[https://img.shields.io/badge/Performance-Optimized-green?style=for-the-badge](https://www.google.com/search?q=https://img.shields.io/badge/Performance-Optimized-green%3Fstyle%3Dfor-the-badge)">
+  <pre align="center">
+   ██████╗  ██████╗ ███████╗████████╗
+  ██╔════╝ ██╔═══██╗██╔════╝╚══██╔══╝
+  ██║  ███╗██║   ██║███████╗   ██║   
+  ██║   ██║██║   ██║╚════██║   ██║   
+  ╚██████╔╝╚██████╔╝███████║   ██║   
+   ╚═════╝  ╚═════╝ ╚══════╝   ╚═╝   
+  <b>M  A  N  A  G  E  R    v 9 . 3 . 4</b>
+  </pre>
+</p>
 
+<p align="center">
+  ◈ <b>CORE:</b> <code>Gost v3</code> ◈ <b>VERSION:</b> <code>9.3.4</code> ◈ <b>STATUS:</b> <code>High Performance</code> ◈
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/🛡️_Security-Maximum-blue?style=flat-square">
+  <img src="https://img.shields.io/badge/⚡_Speed-Optimized-green?style=flat-square">
+  <img src="https://img.shields.io/badge/💎_Stability-Ultra-brightgreen?style=flat-square">
+</p>
+
+---
 
 
 
