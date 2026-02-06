@@ -53,6 +53,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Sir-Adnan/Gost-Manager/main/
 
 ```
 
+## 📥 نصب نسخه بتا (BETA)
+
+برای نصب یا آپدیت به آخرین نسخه، دستور زیر را اجرا کنید:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Sir-Adnan/Gost-Manager/main/gost-beta.sh)
+
+```
 ### ⚡ دسترسی سریع
 
 پس از نصب، با تایپ کلمه زیر در هر جای ترمینال، پنل مدیریت باز می‌شود:
