@@ -5,6 +5,7 @@ set -o pipefail
 # Gost Manager - STABLE SILENT FIX (v9.3.4)
 # Creator: UnknownZero (MOD by request)
 # Focus:
+#  - FIXED: Unicode Icons & Font Encoding
 #  - FIX CRASH: Removed invalid '-L warn' flag
 #  - FIX LOG FLOOD: Set StandardError=null (Total Silence)
 #  - GOGC=100 (High Performance)
@@ -23,21 +24,21 @@ HI_CYAN='\033[0;96m'
 HI_PINK='\033[0;95m'
 HI_GREEN='\033[0;92m'
 
-# --- Icons ---
-ICON_ROCKET="ðŸš€"
-ICON_LOCK="ðŸ”’"
-ICON_LB="âš–ï¸"
-ICON_GEAR="ðŸ”§"
-ICON_LOGS="ðŸ“Š"
-ICON_TRASH="ðŸ—‘ï¸"
-ICON_EXIT="ðŸšª"
-ICON_CPU="ðŸ§ "
-ICON_RAM="ðŸ’¾"
-ICON_NET="ðŸŒ"
-ICON_INSTALL="ðŸ’¿"
-ICON_RESTART="ðŸ”„"
-ICON_DNS="ðŸ›¡ï¸"
-ICON_PROXY="ðŸ”Œ"
+# --- Icons (Fixed Unicode) ---
+ICON_ROCKET="🚀"
+ICON_LOCK="🔒"
+ICON_LB="⚖️"
+ICON_GEAR="🔧"
+ICON_LOGS="📊"
+ICON_TRASH="🗑️"
+ICON_EXIT="🚪"
+ICON_CPU="🧠"
+ICON_RAM="💾"
+ICON_NET="🌐"
+ICON_INSTALL="💿"
+ICON_RESTART="🔄"
+ICON_DNS="🛡️"
+ICON_PROXY="🔌"
 
 # --- Paths ---
 CONFIG_DIR="/etc/gost"
@@ -49,7 +50,6 @@ YQ_MANAGED_FLAG="/etc/gost/.yq_managed"
 LOG_POLICY_STATE_FILE="/etc/gost/.journald_policy"
 JOURNALD_CONF_FILE="/etc/systemd/journald.conf.d/99-gost-manager.conf"
 WATCHDOG_LOGROTATE_FILE="/etc/logrotate.d/gost-watchdog"
-# Optional: pin installer checksum (sha256) to avoid unverified remote execution.
 GOST_INSTALLER_SHA256=""
 
 # --- Shortcut ---
@@ -70,9 +70,9 @@ confirm_yes() {
     [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]
 }
 
-ask_input() { echo -ne "  ${HI_PINK}âž¤ $1 : ${NC}"; }
+ask_input() { echo -ne "  ${HI_PINK}➤ $1 : ${NC}"; }
 section_title() { echo -e "\n  ${BOLD}${HI_CYAN}:: $1 ::${NC}"; }
-info_msg() { echo -e "  ${YELLOW}â„¹${NC} ${BLUE}$1${NC}"; }
+info_msg() { echo -e "  ${YELLOW}ℹ${NC} ${BLUE}$1${NC}"; }
 
 normalize_ip() {
     local input_ip=$1
@@ -167,7 +167,7 @@ draw_logo() {
 }
 
 draw_line() {
-    echo -e "${BLUE}â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
 print_option() {
@@ -187,16 +187,16 @@ show_guide() {
     local title="$1"
     local text="$2"
     echo ""
-    echo -e "  ${HI_PINK}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
-    echo -e "  ${HI_PINK}â•‘${NC} ${HI_CYAN}GUIDE:${NC} ${BOLD}$title${NC}"
-    echo -e "  ${HI_PINK}â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
-    echo -e "  ${HI_PINK}â•‘${NC} $text"
-    echo -e "  ${HI_PINK}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+    echo -e "  ${HI_PINK}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}GUIDE:${NC} ${BOLD}$title${NC}"
+    echo -e "  ${HI_PINK}╠══════════════════════════════════════════════════════════╝${NC}"
+    echo -e "  ${HI_PINK}║${NC} $text"
+    echo -e "  ${HI_PINK}╚══════════════════════════════════════════════════════════${NC}"
     echo ""
 }
 
 show_warning() {
-    echo -e "  ${RED}âš  WARNING:${NC} ${YELLOW}Use only A-Z, 0-9. NO special chars ( \" ' $ \\ )!${NC}"
+    echo -e "  ${RED}⚠ WARNING:${NC} ${YELLOW}Use only A-Z, 0-9. NO special chars ( \" ' $ \\ )!${NC}"
 }
 
 # --------------------------------------------------
@@ -273,7 +273,7 @@ draw_dashboard() {
 
     echo ""
     draw_line
-    printf "  ${HI_PINK}âž¤ Select Option : ${NC}"
+    printf "  ${HI_PINK}➤ Select Option : ${NC}"
 }
 
 # ==================================================
@@ -385,7 +385,7 @@ setup_shortcut() {
         echo -e "  ${BLUE}Allows you to run the manager by typing 'igost'.${NC}"
         echo ""
 
-        echo -ne "  ${HI_PINK}âž¤ Install (y/yes to confirm)? : ${NC}"
+        echo -ne "  ${HI_PINK}➤ Install (y/yes to confirm)? : ${NC}"
         read -r install_opt
         install_opt=${install_opt:-y}
 
@@ -396,10 +396,10 @@ setup_shortcut() {
             printf '#!/bin/bash\nexec bash %q "$@"\n' "$self_script" > "$SHORTCUT_BIN"
             if [ -s "$SHORTCUT_BIN" ]; then
                 chmod +x "$SHORTCUT_BIN"
-                echo -e "  ${HI_GREEN}âœ” Installed! Type 'igost' to run.${NC}"
+                echo -e "  ${HI_GREEN}✔ Installed! Type 'igost' to run.${NC}"
                 sleep 2
             else
-                echo -e "  ${RED}âœ– Shortcut creation failed.${NC}"
+                echo -e "  ${RED}✖ Shortcut creation failed.${NC}"
                 sleep 2
             fi
         fi
@@ -410,10 +410,10 @@ check_port_safety() {
     local port=$1
     validate_port "$port" || { echo -e "  ${RED}Bad Port${NC}"; return 1; }
     if PORT_NUM="$port" $YQ_BIN -e '.services[]? | select((.addr // "") | test(":" + strenv(PORT_NUM) + "$"))' "$CONFIG_FILE" >/dev/null 2>&1; then
-        echo -e "  ${RED}âœ– Port $port is already configured!${NC}"; return 1
+        echo -e "  ${RED}✖ Port $port is already configured!${NC}"; return 1
     fi
     if lsof -i :"$port" > /dev/null 2>&1; then
-        echo -e "  ${RED}âœ– Port $port is busy in system!${NC}"; return 1
+        echo -e "  ${RED}✖ Port $port is busy in system!${NC}"; return 1
     fi
     return 0
 }
@@ -425,7 +425,7 @@ check_name_safety() {
         return 1
     }
     if $YQ_BIN -r '.services[]?.name // ""' "$CONFIG_FILE" 2>/dev/null | grep -Eq "^${name}(-|$)"; then
-        echo -e "  ${RED}âœ– Name '$name' already exists!${NC}"; return 1
+        echo -e "  ${RED}✖ Name '$name' already exists!${NC}"; return 1
     fi
     return 0
 }
@@ -435,10 +435,10 @@ apply_config() {
     systemctl restart gost
     sleep 1
     if systemctl is-active --quiet gost; then
-        echo -e "  ${HI_GREEN}âœ” Success! Service is running.${NC}"
+        echo -e "  ${HI_GREEN}✔ Success! Service is running.${NC}"
         read -r -p "  Press Enter to continue..."
     else
-        echo -e "  ${RED}âœ– Failed! Restoring backup...${NC}"
+        echo -e "  ${RED}✖ Failed! Restoring backup...${NC}"
         [ -f "${CONFIG_FILE}.bak" ] && mv "${CONFIG_FILE}.bak" "$CONFIG_FILE" && systemctl restart gost
         journalctl -u gost -n 5 --no-pager
         read -r -p "  Press Enter..."
@@ -466,11 +466,10 @@ User=root
 # Performance Tuning
 Environment="GOGC=100"
 
-# --- STANDARD EXECUTION (No args that cause crash) ---
+# --- STANDARD EXECUTION ---
 ExecStart=$GOST_BIN -C $CONFIG_FILE
 
 # --- TOTAL SILENCE (Fixes Log Flood) ---
-# We discard both stdout and stderr to prevent disk filling
 StandardOutput=null
 StandardError=null
 
@@ -530,7 +529,7 @@ toggle_debug_mode() {
         
         systemctl daemon-reload
         systemctl restart gost
-        echo -e "  ${YELLOW}âš  DEBUG MODE ENABLED.${NC} ${BLUE}Logs are now writing to disk.${NC}"
+        echo -e "  ${YELLOW}⚠ DEBUG MODE ENABLED.${NC} ${BLUE}Logs are now writing to disk.${NC}"
     else
         # Disable Debug (Total Silence)
         sed -i 's/^StandardOutput=journal/StandardOutput=null/' "$SERVICE_FILE"
@@ -538,7 +537,7 @@ toggle_debug_mode() {
         
         systemctl daemon-reload
         systemctl restart gost
-        echo -e "  ${HI_GREEN}âœ” SILENT MODE ENABLED.${NC} ${BLUE}All logs disabled.${NC}"
+        echo -e "  ${HI_GREEN}✔ SILENT MODE ENABLED.${NC} ${BLUE}All logs disabled.${NC}"
     fi
     sleep 2
 }
@@ -806,7 +805,7 @@ add_lb() {
         ask_input "Node Port"; read -r nport
         validate_port "$nport" || { echo -e "  ${RED}Bad Node Port${NC}"; continue; }
         NODES+=("$nip:$nport")
-        echo -e "    ${HI_GREEN}âœ” Added${NC}"
+        echo -e "    ${HI_GREEN}✔ Added${NC}"
     done
 
     if [ ${#NODES[@]} -eq 0 ]; then echo -e "  ${RED}No nodes!${NC}"; sleep 1; return; fi
@@ -907,7 +906,7 @@ delete_service() {
     if [[ "$count" == "0" ]]; then echo -e "  ${YELLOW}No services configured.${NC}"; sleep 1; return; fi
 
     printf "  ${BLUE}%-4s %-25s %-15s${NC}\n" "ID" "NAME" "PORT"
-    echo -e "  ${BLUE}â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€${NC}"
+    echo -e "  ${BLUE}────────────────────────────────────────────${NC}"
     for ((i=0; i<count; i++)); do
         s_name=$($YQ_BIN ".services[$i].name" "$CONFIG_FILE" 2>/dev/null | tr -d '"')
         s_port=$($YQ_BIN ".services[$i].addr" "$CONFIG_FILE" 2>/dev/null | tr -d '"')
@@ -924,8 +923,7 @@ delete_service() {
 }
 
 # ==================================================
-#  LIGHTWEIGHT WATCHDOG (no top/bc)
-#   - Uses /proc/loadavg (very low CPU)
+#  WATCHDOG
 # ==================================================
 
 setup_watchdog() {
@@ -979,7 +977,6 @@ EOF
     mkdir -p /etc/gost
     echo "$thr" > /etc/gost/watchdog_threshold
 
-    # Install cron entry (dedupe)
     (crontab -l 2>/dev/null; echo "* * * * * /usr/local/bin/gost_watchdog.sh") | sort -u | crontab -
 
     cat <<EOF > "$WATCHDOG_LOGROTATE_FILE"
@@ -994,14 +991,14 @@ EOF
 }
 EOF
 
-    echo -e "\n  ${HI_GREEN}âœ” Watchdog Activated.${NC} Threshold=${thr} (1-min load)"
+    echo -e "\n  ${HI_GREEN}✔ Watchdog Activated.${NC} Threshold=${thr} (1-min load)"
     sleep 2
 }
 
 menu_uninstall() {
     draw_dashboard
     section_title "UNINSTALL MANAGER"
-    echo -e "  ${RED}âš  WARNING: This will remove Gost, configs, yq, watchdog, and shortcut!${NC}"
+    echo -e "  ${RED}⚠ WARNING: This will remove Gost, configs, yq, watchdog, and shortcut!${NC}"
     echo ""
     ask_input "Confirm (y/yes)"; read -r c
     if confirm_yes "$c"; then
@@ -1020,20 +1017,19 @@ menu_uninstall() {
         fi
         systemctl daemon-reload
         rm -f "$(command -v gost)" 2>/dev/null
-        echo -e "\n  ${HI_GREEN}âœ” Uninstalled successfully.${NC}"
+        echo -e "\n  ${HI_GREEN}✔ Uninstalled successfully.${NC}"
         exit 0
     fi
 }
 
 menu_exit() {
     clear
-    echo -e "\n  ${HI_PINK}Goodbye! ðŸ‘‹${NC}"
+    echo -e "\n  ${HI_PINK}Goodbye! 👋${NC}"
     exit 0
 }
 
 # ==================================================
 #  LOGS MENU
-#   - Syslog truncate ONLY here (with confirmation)
 # ==================================================
 
 logs_menu() {
@@ -1042,20 +1038,18 @@ logs_menu() {
         section_title "LOGS & DISK CONTROL"
         info_msg "Tiny disk mode: journald is limited + you can toggle debug."
         echo ""
-        # --- FIXED GUIDE SECTION START ---
-        echo -e "  ${HI_PINK}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
-        echo -e "  ${HI_PINK}â•‘${NC} ${HI_CYAN}GUIDE:${NC} ${BOLD}Logs Menu Options${NC}"
-        echo -e "  ${HI_PINK}â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
-        echo -e "  ${HI_PINK}â•‘${NC} ${HI_CYAN}[1] Live Logs:${NC} Watch logs in real-time (Ctrl+C to exit)."
-        echo -e "  ${HI_PINK}â•‘${NC} ${HI_CYAN}[2] Disk Usage:${NC} Show how much space logs are taking."
-        echo -e "  ${HI_PINK}â•‘${NC} ${HI_CYAN}[3] Vacuum Size:${NC} Reduce logs to specific size (e.g. 100M)."
-        echo -e "  ${HI_PINK}â•‘${NC} ${HI_CYAN}[4] Vacuum Time:${NC} Delete logs older than X (e.g. 7d)."
-        echo -e "  ${HI_PINK}â•‘${NC} ${HI_CYAN}[5] Set Limits:${NC} Set permanent log size limits (Prevent full disk)."
-        echo -e "  ${HI_PINK}â•‘${NC} ${HI_CYAN}[7] Clear Syslog:${NC} Danger! Deletes all system logs."
-        echo -e "  ${HI_PINK}â•‘${NC} ${HI_CYAN}[9] Debug Mode:${NC} Toggle between Silent (Errors only) & Full logs."
-        echo -e "  ${HI_PINK}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+        echo -e "  ${HI_PINK}╔══════════════════════════════════════════════════════════╗${NC}"
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}GUIDE:${NC} ${BOLD}Logs Menu Options${NC}"
+        echo -e "  ${HI_PINK}╠══════════════════════════════════════════════════════════╝${NC}"
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[1] Live Logs:${NC} Watch logs in real-time (Ctrl+C to exit)."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[2] Disk Usage:${NC} Show how much space logs are taking."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[3] Vacuum Size:${NC} Reduce logs to specific size (e.g. 100M)."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[4] Vacuum Time:${NC} Delete logs older than X (e.g. 7d)."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[5] Set Limits:${NC} Set permanent log size limits."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[7] Clear Syslog:${NC} Danger! Deletes all system logs."
+        echo -e "  ${HI_PINK}║${NC} ${HI_CYAN}[9] Debug Mode:${NC} Toggle between Silent & Full logs."
+        echo -e "  ${HI_PINK}╚══════════════════════════════════════════════════════════${NC}"
         echo ""
-        # --- FIXED GUIDE SECTION END ---
 
         echo -e "  ${HI_CYAN}[1]${NC} Follow Gost Logs (Live)"
         echo -e "  ${HI_CYAN}[2]${NC} Journal Disk Usage"
@@ -1072,100 +1066,28 @@ logs_menu() {
         ask_input "Select"; read -r lopt
 
         case $lopt in
-            1)
-                clear
-                echo -e "${BLUE}--- Following gost logs (Ctrl+C to stop) ---${NC}"
-                journalctl -u gost -f
-                ;;
-            2)
-                echo ""
-                journalctl --disk-usage
-                echo ""
-                read -r -p "  Press Enter to continue..."
-                ;;
-            3)
-                echo ""
-                ask_input "Vacuum Size (e.g. 200M)"; read -r vsize
-                [[ -z "$vsize" ]] && vsize="200M"
-                echo -e "${BLUE}--- Vacuuming journal to size: $vsize ---${NC}"
-                journalctl --vacuum-size="$vsize"
-                echo ""
-                journalctl --disk-usage
-                echo ""
-                read -r -p "  Press Enter to continue..."
-                ;;
-            4)
-                echo ""
-                ask_input "Vacuum Time (e.g. 7d)"; read -r vtime
-                [[ -z "$vtime" ]] && vtime="7d"
-                echo -e "${BLUE}--- Vacuuming journal older than: $vtime ---${NC}"
-                journalctl --vacuum-time="$vtime"
-                echo ""
-                journalctl --disk-usage
-                echo ""
-                read -r -p "  Press Enter to continue..."
-                ;;
-            5)
-                echo ""
-                section_title "JOURNALD LIMITS"
-                info_msg "Writes: $JOURNALD_CONF_FILE"
-                ask_input "SystemMaxUse (Default 120M)"; read -r jmax
-                [[ -z "$jmax" ]] && jmax="120M"
-                ask_input "SystemKeepFree (Default 200M)"; read -r jfree
-                [[ -z "$jfree" ]] && jfree="200M"
-                ask_input "SystemMaxFileSize (Default 20M)"; read -r jfile
-                [[ -z "$jfile" ]] && jfile="20M"
-
-                apply_journald_limits "$jmax" "$jfree" "$jfile"
-                echo "enabled" > "$LOG_POLICY_STATE_FILE"
-                echo ""
-                echo -e "  ${HI_GREEN}âœ” Journald limits applied.${NC}"
-                journalctl --disk-usage
-                echo ""
-                read -r -p "  Press Enter to continue..."
-                ;;
-            6)
-                echo ""
-                if ! command -v logrotate &> /dev/null; then
-                    echo -e "  ${RED}âœ– logrotate not installed.${NC}"
-                    read -r -p "  Press Enter..."
-                else
-                    echo -e "${BLUE}--- Running logrotate (forced) ---${NC}"
-                    logrotate -f /etc/logrotate.conf
-                    echo ""
-                    du -sh /var/log/syslog* 2>/dev/null | sort -h
-                    echo ""
-                    read -r -p "  Press Enter to continue..."
-                fi
-                ;;
-            7)
-                echo ""
-                echo -e "  ${RED}âš  WARNING:${NC} ${YELLOW}This will EMPTY /var/log/syslog now.${NC}"
-                ask_input "Confirm (y/yes)"; read -r c
-                if confirm_yes "$c"; then
-                    truncate -s 0 /var/log/syslog 2>/dev/null
-                    echo -e "  ${HI_GREEN}âœ” syslog truncated.${NC}"
-                else
-                    echo -e "  ${YELLOW}Canceled.${NC}"
-                fi
-                echo ""
-                read -r -p "  Press Enter to continue..."
-                ;;
-            8)
-                echo ""
-                systemctl status gost --no-pager
-                echo ""
-                read -r -p "  Press Enter to continue..."
-                ;;
-            9)
-                toggle_debug_mode
-                ;;
-            0)
-                return
-                ;;
-            *)
-                sleep 0.3
-                ;;
+            1) journalctl -u gost -f ;;
+            2) journalctl --disk-usage; read -r -p "  Press Enter..." ;;
+            3) ask_input "Vacuum Size (e.g. 200M)"; read -r vsize; [[ -z "$vsize" ]] && vsize="200M"
+               journalctl --vacuum-size="$vsize"; read -r -p "  Press Enter..." ;;
+            4) ask_input "Vacuum Time (e.g. 7d)"; read -r vtime; [[ -z "$vtime" ]] && vtime="7d"
+               journalctl --vacuum-time="$vtime"; read -r -p "  Press Enter..." ;;
+            5) section_title "JOURNALD LIMITS"
+               ask_input "SystemMaxUse (Default 120M)"; read -r jmax; [[ -z "$jmax" ]] && jmax="120M"
+               ask_input "SystemKeepFree (Default 200M)"; read -r jfree; [[ -z "$jfree" ]] && jfree="200M"
+               ask_input "SystemMaxFileSize (Default 20M)"; read -r jfile; [[ -z "$jfile" ]] && jfile="20M"
+               apply_journald_limits "$jmax" "$jfree" "$jfile"
+               echo "enabled" > "$LOG_POLICY_STATE_FILE"
+               echo -e "  ${HI_GREEN}✔ Applied.${NC}"; read -r -p "  Press Enter..." ;;
+            6) if ! command -v logrotate &> /dev/null; then echo -e "  ${RED}✖ Failed.${NC}"
+               else logrotate -f /etc/logrotate.conf; du -sh /var/log/syslog* 2>/dev/null | sort -h
+               fi; read -r -p "  Press Enter..." ;;
+            7) echo -e "  ${RED}⚠ WARNING:${NC} ${YELLOW}Confirm?${NC}"; ask_input "Confirm (y/yes)"; read -r c
+               if confirm_yes "$c"; then truncate -s 0 /var/log/syslog 2>/dev/null; echo -e "  ${HI_GREEN}✔ Done.${NC}"
+               fi; read -r -p "  Press Enter..." ;;
+            8) systemctl status gost --no-pager; read -r -p "  Press Enter..." ;;
+            9) toggle_debug_mode ;;
+            0) return ;;
         esac
     done
 }
@@ -1176,7 +1098,7 @@ logs_menu() {
 
 install_dependencies
 create_service
-auto_clean_logs   # MUST run at startup (journald limit + vacuum)
+auto_clean_logs
 setup_shortcut
 
 while true; do
@@ -1197,4 +1119,3 @@ while true; do
         *) sleep 0.3 ;;
     esac
 done
-
