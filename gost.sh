@@ -1,13 +1,12 @@
 #!/bin/bash
 
 # ==================================================
-# Gost Manager - ULTIMATE SILENT (v9.3.3)
+# Gost Manager - STABLE SILENT FIX (v9.3.4)
 # Creator: UnknownZero (MOD by request)
 # Focus:
-#  - GOGC=100 (High Performance for 4GB+ RAM)
-#  - Log Level: WARN (Fixes syslog flooding)
-#  - Detailed Logs Menu Guide
-#  - Disk tiny friendly + minimum debug
+#  - FIX CRASH: Removed invalid '-L warn' flag
+#  - FIX LOG FLOOD: Set StandardError=null (Total Silence)
+#  - GOGC=100 (High Performance)
 # ==================================================
 
 # --- Colors (Safe Palette) ---
@@ -61,7 +60,6 @@ fi
 # ==================================================
 
 confirm_yes() {
-    # Accept: y, Y, yes, YES, Yes, yEs, ...
     local ans="$1"
     [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]
 }
@@ -134,7 +132,7 @@ show_warning() {
 }
 
 # --------------------------------------------------
-# Dashboard Caching (reduce CPU on busy servers)
+# Dashboard Caching
 # --------------------------------------------------
 CACHE_TTL=5
 LAST_STATS_TS=0
@@ -308,14 +306,13 @@ apply_config() {
         journalctl -u gost -n 5 --no-pager
         read -r -p "  Press Enter..."
     fi
-    # Refresh dashboard counters quickly after changes
     LAST_STATS_TS=0
 }
 
 # ==================================================
-#  SYSTEMD SERVICE (v9.3 defaults)
-#   - Silent Output (stdout off) + Errors in journald
-#   - GOGC=100 (Optimized for performance)
+#  SYSTEMD SERVICE (v9.3.4 FIXED)
+#   - Silent Output + Silent Error (Total Silence)
+#   - GOGC=100
 # ==================================================
 
 create_service() {
@@ -329,15 +326,16 @@ After=network.target
 [Service]
 Type=simple
 User=root
-# Performance Tuning: GOGC=100 is best for 4GB+ RAM servers
+# Performance Tuning
 Environment="GOGC=100"
 
-# --- FIX: Set log level to WARN to stop log flooding ---
-ExecStart=$GOST_BIN -L warn -C $CONFIG_FILE
+# --- STANDARD EXECUTION (No args that cause crash) ---
+ExecStart=$GOST_BIN -C $CONFIG_FILE
 
-# Default: Silent + Errors Only (tiny disk + minimum debug)
+# --- TOTAL SILENCE (Fixes Log Flood) ---
+# We discard both stdout and stderr to prevent disk filling
 StandardOutput=null
-StandardError=journal
+StandardError=null
 
 Restart=always
 RestartSec=3
@@ -352,13 +350,10 @@ EOF
 }
 
 # ==================================================
-#  AUTO LOG OPTIMIZATION (startup)
-#   - MUST run journald limit + vacuum
-#   - NO syslog truncate here (only in logs menu)
+#  AUTO LOG OPTIMIZATION
 # ==================================================
 
 auto_clean_logs() {
-    # Logical defaults for tiny disks: keep some history but not blow up disk.
     local MAX_USE="120M"
     local KEEP_FREE="200M"
     local MAX_FILE="20M"
@@ -378,44 +373,33 @@ EOF
 }
 
 # ==================================================
-#  DEBUG TOGGLE (robust)
+#  DEBUG TOGGLE
 # ==================================================
 
 toggle_debug_mode() {
     echo ""
     if grep -q "^StandardOutput=null" "$SERVICE_FILE" 2>/dev/null; then
-        # Enable Debug (full logs)
-        # Note: We must also remove -L warn to see info logs in debug mode
+        # Enable Debug (Full Logs)
         sed -i 's/^StandardOutput=null/StandardOutput=journal/' "$SERVICE_FILE"
-        sed -i 's/-L warn//' "$SERVICE_FILE"
+        sed -i 's/^StandardError=null/StandardError=journal/' "$SERVICE_FILE"
         
-        # Keep stderr to journal (already)
-        if ! grep -q "^StandardError=journal" "$SERVICE_FILE"; then
-            echo "StandardError=journal" >> "$SERVICE_FILE"
-        fi
         systemctl daemon-reload
         systemctl restart gost
-        echo -e "  ${YELLOW}⚠ DEBUG MODE ENABLED.${NC} ${BLUE}Full logs are now active.${NC}"
+        echo -e "  ${YELLOW}⚠ DEBUG MODE ENABLED.${NC} ${BLUE}Logs are now writing to disk.${NC}"
     else
-        # Disable Debug (silent + errors + warn level)
+        # Disable Debug (Total Silence)
         sed -i 's/^StandardOutput=journal/StandardOutput=null/' "$SERVICE_FILE"
-        # Re-add -L warn if missing
-        if ! grep -q "\-L warn" "$SERVICE_FILE"; then
-             sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/gost -L warn -C /etc/gost/config.yaml|' "$SERVICE_FILE"
-        fi
-
-        if ! grep -q "^StandardError=journal" "$SERVICE_FILE"; then
-            echo "StandardError=journal" >> "$SERVICE_FILE"
-        fi
+        sed -i 's/^StandardError=journal/StandardError=null/' "$SERVICE_FILE"
+        
         systemctl daemon-reload
         systemctl restart gost
-        echo -e "  ${HI_GREEN}✔ SILENT MODE ENABLED.${NC} ${BLUE}Errors-only logging active.${NC}"
+        echo -e "  ${HI_GREEN}✔ SILENT MODE ENABLED.${NC} ${BLUE}All logs disabled.${NC}"
     fi
     sleep 2
 }
 
 # ==================================================
-#  CORE FUNCTIONS (v9.3)
+#  CORE FUNCTIONS
 # ==================================================
 
 add_tunnel() {
