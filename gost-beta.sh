@@ -5,7 +5,7 @@ set -o pipefail
 # Gost Manager - ULTIMATE HYBRID BETA (v9.3.4)
 # Creator: UnknownZero (MOD by request)
 # Focus:
-#  - FIXED: YQ Checksum Removed (Direct Install)
+#  - FIXED: "igost" Shortcut Pipe Error (Self-Install)
 #  - FIXED: Installation Progress Visible (Verbose)
 #  - FIXED: Unicode Icons & Font Encoding
 #  - ADDED: Logrotate for Watchdog
@@ -53,6 +53,8 @@ YQ_MANAGED_FLAG="/etc/gost/.yq_managed"
 LOG_POLICY_STATE_FILE="/etc/gost/.journald_policy"
 JOURNALD_CONF_FILE="/etc/systemd/journald.conf.d/99-gost-manager.conf"
 WATCHDOG_LOGROTATE_FILE="/etc/logrotate.d/gost-watchdog"
+# Permanent location for the manager script to ensure shortcut works
+MANAGER_SCRIPT_PATH="/etc/gost/manager.sh"
 
 # --- Shortcut ---
 SHORTCUT_BIN="/usr/local/bin/igost"
@@ -111,10 +113,6 @@ sha256_of_file() {
         return 0
     fi
     return 1
-}
-
-resolve_script_path() {
-    readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0"
 }
 
 # --- MODIFIED: Verbose installation (Shows output) ---
@@ -358,8 +356,10 @@ install_dependencies() {
     if [ ! -s "$CONFIG_FILE" ]; then echo "services: []" > "$CONFIG_FILE"; fi
 }
 
+# --- FIX: SMART SHORTCUT (Self-Installing) ---
 setup_shortcut() {
-    if [ ! -s "$SHORTCUT_BIN" ]; then
+    # If the manager script doesn't exist in the permanent location, or shortcut is missing
+    if [ ! -s "$SHORTCUT_BIN" ] || [ ! -f "$MANAGER_SCRIPT_PATH" ]; then
         echo ""
         draw_line
         echo -e "  ${ICON_INSTALL}  ${BOLD}Setup 'igost' Shortcut?${NC}"
@@ -371,10 +371,28 @@ setup_shortcut() {
         install_opt=${install_opt:-y}
 
         if confirm_yes "$install_opt"; then
-            local self_script
-            self_script=$(resolve_script_path)
+            echo -e "  ${YELLOW}Installing manager to $MANAGER_SCRIPT_PATH...${NC}"
+            
+            # COPY SELF TO PERMANENT LOCATION
+            # This handles both 'bash script.sh' and 'curl | bash'
+            if [ -f "$0" ]; then
+                cp "$0" "$MANAGER_SCRIPT_PATH"
+            else
+                # If running from pipe ($0 is bash), we dump the currently running script content
+                # This is a neat trick to capture the script content even when piped
+                cat "$BASH_SOURCE" > "$MANAGER_SCRIPT_PATH" 2>/dev/null || cat > "$MANAGER_SCRIPT_PATH"
+            fi
+            
+            # Verify if copy succeeded, if not try downloading again as fallback
+            if [ ! -s "$MANAGER_SCRIPT_PATH" ]; then
+                 curl -sSL "https://raw.githubusercontent.com/Sir-Adnan/Gost-Manager/main/gost.sh" > "$MANAGER_SCRIPT_PATH"
+            fi
+
+            chmod +x "$MANAGER_SCRIPT_PATH"
+
             echo -e "  ${YELLOW}Creating local launcher at $SHORTCUT_BIN...${NC}"
-            printf '#!/bin/bash\nexec bash %q "$@"\n' "$self_script" > "$SHORTCUT_BIN"
+            printf '#!/bin/bash\nexec bash %q "$@"\n' "$MANAGER_SCRIPT_PATH" > "$SHORTCUT_BIN"
+            
             if [ -s "$SHORTCUT_BIN" ]; then
                 chmod +x "$SHORTCUT_BIN"
                 echo -e "  ${HI_GREEN}✔ Installed! Type 'igost' to run.${NC}"
@@ -996,6 +1014,7 @@ menu_uninstall() {
         rm -f "$WATCHDOG_LOGROTATE_FILE"
         crontab -l 2>/dev/null | grep -v "gost_watchdog.sh" | crontab - 2>/dev/null
         rm -rf "$CONFIG_DIR" "$SERVICE_FILE" "$SHORTCUT_BIN"
+        rm -f "$MANAGER_SCRIPT_PATH"
         if [ "$yq_managed" = true ]; then
             rm -f "$YQ_BIN" "$YQ_MANAGED_FLAG"
         fi
