@@ -5,6 +5,7 @@ set -o pipefail
 # Gost Manager - ULTIMATE HYBRID BETA (v9.3.4)
 # Creator: UnknownZero (MOD by request)
 # Focus:
+#  - FIXED: Installation Progress Visible (Verbose)
 #  - FIXED: Unicode Icons & Font Encoding
 #  - ADDED: Logrotate for Watchdog
 #  - ADDED: TLS Verification Toggle (Insecure mode)
@@ -51,7 +52,6 @@ YQ_MANAGED_FLAG="/etc/gost/.yq_managed"
 LOG_POLICY_STATE_FILE="/etc/gost/.journald_policy"
 JOURNALD_CONF_FILE="/etc/systemd/journald.conf.d/99-gost-manager.conf"
 WATCHDOG_LOGROTATE_FILE="/etc/logrotate.d/gost-watchdog"
-GOST_INSTALLER_SHA256=""
 
 # --- Shortcut ---
 SHORTCUT_BIN="/usr/local/bin/igost"
@@ -116,9 +116,12 @@ resolve_script_path() {
     readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0"
 }
 
+# --- MODIFIED: Verbose installation (Shows output) ---
 install_core_dependencies() {
+    echo -e "${BLUE}Updating package lists & Installing core tools...${NC}"
     if command -v apt-get >/dev/null 2>&1; then
-        apt-get update -q && apt-get install -y curl openssl lsof nano netcat-openbsd vnstat logrotate cron -q
+        # Removed -q to show progress
+        apt-get update && apt-get install -y curl openssl lsof nano netcat-openbsd vnstat logrotate cron
     elif command -v dnf >/dev/null 2>&1; then
         dnf install -y curl openssl lsof nano nmap-ncat vnstat logrotate cronie
     elif command -v yum >/dev/null 2>&1; then
@@ -278,7 +281,7 @@ draw_dashboard() {
 }
 
 # ==================================================
-#  DEPENDENCIES
+#  DEPENDENCIES (MODIFIED: VERBOSE)
 # ==================================================
 
 install_dependencies() {
@@ -293,11 +296,12 @@ install_dependencies() {
     fi
 
     if [ "$NEED_INSTALL" = true ]; then
-        echo -e "${BLUE}Installing core dependencies...${NC}"
+        # Verbose install
         install_core_dependencies || exit 1
     fi
 
     if [ ! -f "$YQ_BIN" ]; then
+        echo -e "${BLUE}Downloading yq processor...${NC}"
         local ARCH_RAW YQ_FILE YQ_URL YQ_SUM_URL TMP_YQ TMP_SUM EXPECTED_SHA ACTUAL_SHA
         ARCH_RAW=$(uname -m 2>/dev/null)
         if [[ "$ARCH_RAW" == "x86_64" || "$ARCH_RAW" == "amd64" ]]; then
@@ -313,13 +317,14 @@ install_dependencies() {
         TMP_YQ=$(mktemp)
         TMP_SUM=$(mktemp)
 
-        curl --proto '=https' --tlsv1.2 -fsSL -o "$TMP_YQ" "$YQ_URL" > /dev/null 2>&1 || {
+        # Removed redirection to show progress
+        curl --proto '=https' --tlsv1.2 -fL -o "$TMP_YQ" "$YQ_URL" || {
             rm -f "$TMP_YQ" "$TMP_SUM"
             echo -e "${RED}Failed to download yq.${NC}"
             exit 1
         }
 
-        curl --proto '=https' --tlsv1.2 -fsSL -o "$TMP_SUM" "$YQ_SUM_URL" > /dev/null 2>&1 || {
+        curl --proto '=https' --tlsv1.2 -fL -o "$TMP_SUM" "$YQ_SUM_URL" || {
             rm -f "$TMP_YQ" "$TMP_SUM"
             echo -e "${RED}Failed to download yq checksums.${NC}"
             exit 1
@@ -336,22 +341,30 @@ install_dependencies() {
         install -m 0755 "$TMP_YQ" "$YQ_BIN"
         rm -f "$TMP_YQ" "$TMP_SUM"
         touch "$YQ_MANAGED_FLAG"
+        echo -e "${HI_GREEN}yq installed.${NC}"
     fi
 
     if ! command -v gost &> /dev/null; then
+        echo -e "${BLUE}Downloading Gost...${NC}"
         local GOST_INSTALLER
         GOST_INSTALLER=$(mktemp)
-        curl --proto '=https' --tlsv1.2 -fsSL -o "$GOST_INSTALLER" "https://github.com/go-gost/gost/raw/master/install.sh" > /dev/null 2>&1 || {
+        
+        # Removed redirection to show progress
+        curl --proto '=https' --tlsv1.2 -fL -o "$GOST_INSTALLER" "https://github.com/go-gost/gost/raw/master/install.sh" || {
             rm -f "$GOST_INSTALLER"
             echo -e "${RED}Failed to download gost installer.${NC}"
             exit 1
         }
-        if ! bash "$GOST_INSTALLER" --install > /dev/null 2>&1; then
+
+        # --- FIX: Removed annoying prompt for empty checksum ---
+        # Direct Install
+        if ! bash "$GOST_INSTALLER" --install; then
             rm -f "$GOST_INSTALLER"
             echo -e "${RED}Gost installation failed.${NC}"
             exit 1
         fi
         rm -f "$GOST_INSTALLER"
+        echo -e "${HI_GREEN}Gost installed.${NC}"
     fi
 
     mkdir -p "$CONFIG_DIR" "$CERT_DIR"
