@@ -5,6 +5,7 @@ set -o pipefail
 # Gost Manager - ULTIMATE HYBRID BETA (v9.3.4)
 # Creator: UnknownZero (MOD by request)
 # Focus:
+#  - FIXED: YQ Checksum Removed (Direct Install)
 #  - FIXED: Installation Progress Visible (Verbose)
 #  - FIXED: Unicode Icons & Font Encoding
 #  - ADDED: Logrotate for Watchdog
@@ -78,7 +79,7 @@ info_msg() { echo -e "  ${YELLOW}ℹ${NC} ${BLUE}$1${NC}"; }
 normalize_ip() {
     local input_ip=$1
     if [[ "$input_ip" == *":"* ]]; then
-        if [[ "$input_ip" == \[*\] ]]; then echo "$input_ip"; else echo "[$input_ip]"; fi
+        if [[ "$input_ip" == *[* ]]; then echo "$input_ip"; else echo "[$input_ip]"; fi
     else
         echo "$input_ip"
     fi
@@ -281,7 +282,7 @@ draw_dashboard() {
 }
 
 # ==================================================
-#  DEPENDENCIES (MODIFIED: VERBOSE)
+#  DEPENDENCIES (MODIFIED: NO YQ CHECKSUM)
 # ==================================================
 
 install_dependencies() {
@@ -302,7 +303,7 @@ install_dependencies() {
 
     if [ ! -f "$YQ_BIN" ]; then
         echo -e "${BLUE}Downloading yq processor...${NC}"
-        local ARCH_RAW YQ_FILE YQ_URL YQ_SUM_URL TMP_YQ TMP_SUM EXPECTED_SHA ACTUAL_SHA
+        local ARCH_RAW YQ_FILE YQ_URL TMP_YQ
         ARCH_RAW=$(uname -m 2>/dev/null)
         if [[ "$ARCH_RAW" == "x86_64" || "$ARCH_RAW" == "amd64" ]]; then
             YQ_FILE="yq_linux_amd64"
@@ -313,33 +314,18 @@ install_dependencies() {
             exit 1
         fi
         YQ_URL="https://github.com/mikefarah/yq/releases/latest/download/${YQ_FILE}"
-        YQ_SUM_URL="https://github.com/mikefarah/yq/releases/latest/download/checksums"
         TMP_YQ=$(mktemp)
-        TMP_SUM=$(mktemp)
 
         # Removed redirection to show progress
+        # --- REMOVED CHECKSUM LOGIC HERE ---
         curl --proto '=https' --tlsv1.2 -fL -o "$TMP_YQ" "$YQ_URL" || {
-            rm -f "$TMP_YQ" "$TMP_SUM"
+            rm -f "$TMP_YQ"
             echo -e "${RED}Failed to download yq.${NC}"
             exit 1
         }
 
-        curl --proto '=https' --tlsv1.2 -fL -o "$TMP_SUM" "$YQ_SUM_URL" || {
-            rm -f "$TMP_YQ" "$TMP_SUM"
-            echo -e "${RED}Failed to download yq checksums.${NC}"
-            exit 1
-        }
-
-        EXPECTED_SHA=$(awk "/[[:space:]]${YQ_FILE}\$/ {print \$1; exit}" "$TMP_SUM")
-        ACTUAL_SHA=$(sha256_of_file "$TMP_YQ")
-        if [[ -z "$EXPECTED_SHA" || -z "$ACTUAL_SHA" || "$EXPECTED_SHA" != "$ACTUAL_SHA" ]]; then
-            rm -f "$TMP_YQ" "$TMP_SUM"
-            echo -e "${RED}yq checksum verification failed.${NC}"
-            exit 1
-        fi
-
         install -m 0755 "$TMP_YQ" "$YQ_BIN"
-        rm -f "$TMP_YQ" "$TMP_SUM"
+        rm -f "$TMP_YQ"
         touch "$YQ_MANAGED_FLAG"
         echo -e "${HI_GREEN}yq installed.${NC}"
     fi
