@@ -741,17 +741,18 @@ add_secure() {
 
         backup_config
 
-        if [[ "$tr" == "shadowsocks" ]]; then
+if [[ "$tr" == "shadowsocks" ]]; then
             ask_input "Forward IP"; read -r raw_tip
             tip=$(normalize_ip "$raw_tip")
             ask_input "Forward Port"; read -r tport
-            validate_port "$tport" || { echo -e "  ${RED}Bad Forward Port${NC}"; sleep 1; return; }
+            validate_port "$tport" || { echo -e "  ${RED}Bad Forward Port${NC}"; sleep 1; return; }
 
             SVC_NAME="$s_name" LISTEN_ADDR=":$lport" TARGET_ADDR="$tip:$tport" SS_PASS="$ss_pass" CIPHER="$cipher" \
             yq_inplace '.services += [{"name": strenv(SVC_NAME), "addr": strenv(LISTEN_ADDR), "handler": {"type": "shadowsocks", "metadata": {"password": strenv(SS_PASS), "method": strenv(CIPHER)}}, "listener": {"type": "tcp"}, "forwarder": {"nodes": [{"addr": strenv(TARGET_ADDR)}]}}]' || { sleep 1; return; }
         else
+            # --- FIX: Handler changed from 'relay' to 'tcp' for Port Forwarding ---
             SVC_NAME="$s_name" LISTEN_ADDR=":$lport" TRANSPORT="$tr" TARGET_ADDR="$tip:$tport" CERT_FILE="$c_path" KEY_FILE="$k_path" \
-            yq_inplace '.services += [{"name": strenv(SVC_NAME), "addr": strenv(LISTEN_ADDR), "handler": {"type": "relay"}, "listener": {"type": strenv(TRANSPORT), "tls": {"certFile": strenv(CERT_FILE), "keyFile": strenv(KEY_FILE)}}, "forwarder": {"nodes": [{"addr": strenv(TARGET_ADDR)}]}}]' || { sleep 1; return; }
+            yq_inplace '.services += [{"name": strenv(SVC_NAME), "addr": strenv(LISTEN_ADDR), "handler": {"type": "tcp"}, "listener": {"type": strenv(TRANSPORT), "tls": {"certFile": strenv(CERT_FILE), "keyFile": strenv(KEY_FILE)}}, "forwarder": {"nodes": [{"addr": strenv(TARGET_ADDR)}]}}]' || { sleep 1; return; }
         fi
         apply_config
     fi
