@@ -556,21 +556,8 @@ add_tunnel() {
     target_addr="$dip:$dport"
 
 if [[ "$proto" == "3" ]]; then
-        echo ""
-        echo -e "  ${BOLD}Server Role:${NC}"
-        echo -e "  ${HI_CYAN}[1]${NC} Sender (Iran)   -> ${BLUE}Listen TCP, Send mTCP${NC}"
-        echo -e "  ${HI_CYAN}[2]${NC} Receiver (Kharej) -> ${BLUE}Listen mTCP, Send TCP${NC}"
-        ask_input "Select Role"; read -r mtcp_role
-
-        if [[ "$mtcp_role" == "1" ]]; then
-             # SENDER CONFIG: Listen TCP -> Dial mTCP
-             SVC_NAME="$s_name-mtcp-send" LISTEN_ADDR=":$lport" TARGET_ADDR="$target_addr" \
-             yq_inplace '.services += [{"name": strenv(SVC_NAME), "addr": strenv(LISTEN_ADDR), "handler": {"type": "tcp"}, "listener": {"type": "tcp"}, "forwarder": {"nodes": [{"addr": strenv(TARGET_ADDR), "dialer": {"type": "mtcp"}}]}}]' || { sleep 1; return; }
-        else
-             # RECEIVER CONFIG: Listen mTCP -> Dial TCP (Original Logic)
-             SVC_NAME="$s_name-mtcp-recv" LISTEN_ADDR=":$lport" TARGET_ADDR="$target_addr" \
-             yq_inplace '.services += [{"name": strenv(SVC_NAME), "addr": strenv(LISTEN_ADDR), "handler": {"type": "tcp"}, "listener": {"type": "mtcp"}, "forwarder": {"nodes": [{"addr": strenv(TARGET_ADDR)}]}}]' || { sleep 1; return; }
-        fi
+        SVC_NAME="$s_name-mtcp" LISTEN_ADDR=":$lport" TARGET_ADDR="$target_addr" \
+        yq_inplace '.services += [{"name": strenv(SVC_NAME), "addr": strenv(LISTEN_ADDR), "handler": {"type": "tcp"}, "listener": {"type": "tcp"}, "forwarder": {"nodes": [{"addr": strenv(TARGET_ADDR), "dialer": {"type": "mtcp", "metadata": {"keepAlive": "15s", "maxStreams": "8192", "handshakeTimeout": "10s"}}}]}}]' || { sleep 1; return; }
     fi
 
     if [[ "$proto" == "1" || "$proto" == "4" ]]; then
